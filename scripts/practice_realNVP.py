@@ -5,7 +5,7 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 from sklearn.datasets import make_moons, make_circles
 
-from src.models.RealNVP import RealNVP
+from rlnf_rrt.models.RealNVP import RealNVP
 
 
 if __name__ == "__main__":
