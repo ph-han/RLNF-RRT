@@ -8,10 +8,12 @@ dependencies = [
     "matplotlib>=3.10.8",
     "numpy>=2.4.1",
     "opencv-python>=4.13.0.90",
+    "pandas>=2.3.3",
     "scikit-learn>=1.8.0",
     "torch>=2.9.1",
     "torchaudio>=2.9.1",
     "torchvision>=0.24.1",
+    "tqdm>=4.67.1",
 ]
 
 [tool.setuptools]
