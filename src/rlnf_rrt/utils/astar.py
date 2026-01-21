@@ -5,8 +5,8 @@ from rlnf_rrt.utils.node import Node
 class AStar:
     def __init__(self, map_info: np.ndarray, clearance:int, step_size:int, resolution:int = 1, robot_radius:float = 1):
         self.grid_map:np.ndarray = map_info
-        self.width:int = map_info.shape[0]
-        self.height:int = map_info.shape[1]
+        self.width:int = map_info.shape[1]
+        self.height:int = map_info.shape[0]
         self.clearance:int = clearance
         self.step_size:int = step_size
         self.resolution:int = resolution
@@ -40,7 +40,7 @@ class AStar:
         if x_min < 0 or x_max > self.width or y_min < 0 or y_max > self.height:
             return False
 
-        if np.any(self.grid_map[y_min:y_max, x_min:x_max]):
+        if np.any(self.grid_map[y_min:y_max, x_min:x_max] == 0):
             return False
 
         return True
@@ -63,7 +63,7 @@ class AStar:
             del open_set[curr_id]
             closed_set[curr_id] = curr
 
-            if curr.is_same(goal):
+            if curr.is_same(goal, eps=self.clearance):
                 goal.parent = curr
                 self.endpoint = goal
                 self.is_success = True
@@ -87,8 +87,8 @@ class AStar:
         
         return self.is_success
     
-    def get_final_path(self) -> list[Node]:
-        path:list[Node] = []
+    def get_final_path(self) -> list[tuple[int, int]]:
+        path:list[tuple[int, int]] = []
 
         if not self.is_success:
             print(f"No path found")
@@ -99,8 +99,3 @@ class AStar:
             path.append((node.x, node.y))
             node = node.parent
         return path[::-1]
-
-
-
-            
-
