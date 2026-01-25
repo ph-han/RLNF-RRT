@@ -9,9 +9,9 @@ class MapEncoder(nn.Module):
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(128), nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(128 * 14 * 14, 256),
+            nn.Linear(128 * 14 * 14, 1024),
             nn.ReLU(),
-            nn.Linear(256, latent_dim)
+            nn.Linear(1024, latent_dim)
         )
 
     def forward(self, x):
