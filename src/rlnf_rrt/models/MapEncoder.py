@@ -1,0 +1,18 @@
+import torch.nn as nn
+
+class MapEncoder(nn.Module):
+    def __init__(self, latent_dim=128):
+        super().__init__()
+        self.conv_block = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(16), nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(32), nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1), nn.BatchNorm2d(128), nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(128 * 14 * 14, 256),
+            nn.ReLU(),
+            nn.Linear(256, latent_dim)
+        )
+
+    def forward(self, x):
+        return self.conv_block(x)

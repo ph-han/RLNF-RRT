@@ -75,13 +75,10 @@ def generate_2d_gt_path(map_info:np.ndarray, start:tuple[int, int], goal:tuple[i
     
     return wp_list
 
-def generate_2d_dataset() -> None:
-    base_path = "../../data/train"
+def generate_2d_dataset(num_of_map_data: int = 100, num_of_start_goal: int = 10, split:str ="train") -> None:
+    base_path = f"../data/{split}"
     for sub_dir in ["map", "start_goal", "gt_path"]:
         os.makedirs(os.path.join(base_path, sub_dir), exist_ok=True)
-
-    num_of_map_data: int = 100
-    num_of_start_goal: int = 10
     
     meta_file_path = os.path.join(base_path, "meta.csv")
     with open(meta_file_path, "w", newline="") as f:
@@ -161,5 +158,5 @@ def main():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    generate_2d_dataset()
+    generate_2d_dataset(5000, 12, "train")
     # main()

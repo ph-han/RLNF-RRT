@@ -7,12 +7,12 @@ from pathlib import Path
 from torch.utils.data import Dataset
 
 class RLNFDataset(Dataset):
-    def __init__(self, dataset_root_path:str="dataset", split:str="train"):
+    def __init__(self, dataset_root_path:str="data", split:str="train"):
         assert split in ["train", "valid", "test"]
-        PROJECT_ROOT:Path = Path(__file__).resolve().parents[1]
+        PROJECT_ROOT:Path = Path(__file__).resolve().parents[3]
         dataset_path:str = f"{PROJECT_ROOT}/{dataset_root_path}/{split}"
 
-        self.meta_data:pd.DataFrame = pd.read_csv(f"{dataset_path}/meta_data.csv")
+        self.meta_data:pd.DataFrame = pd.read_csv(f"{dataset_path}/meta.csv")
         
         self.map_list:list[str] = []
         self.start_goal_list:list[str] = []
@@ -21,9 +21,9 @@ class RLNFDataset(Dataset):
         # self.gt_ss_list = []
 
         for row in tqdm(self.meta_data.iterrows(), total=len(self.meta_data)):
-            self.map_list.append(f"{dataset_path}/map/{row[1]['map']}")
-            self.start_goal_list.append(f"{dataset_path}/start_goal/{row[1]['start_goal']}")
-            self.gt_list.append(f"{dataset_path}/gt_path/{row[1]['gt']}")
+            self.map_list.append(f"{dataset_path}/map/{row[1]['map_file']}")
+            self.start_goal_list.append(f"{dataset_path}/start_goal/{row[1]['start_goal_file']}")
+            self.gt_list.append(f"{dataset_path}/gt_path/{row[1]['gt_path_file']}")
     
     def __len__(self):
         return len(self.meta_data)
@@ -38,14 +38,16 @@ class RLNFDataset(Dataset):
 
         map_tensor:torch.Tensor = torch.from_numpy(map_np).unsqueeze(0).float()
 
-        start_goal:torch.Tensor = torch.from_numpy(np.load(start_goal_path)).float()
-        start, goal = start_goal[0], start_goal[1]
+        start_goal:torch.Tensor = np.load(start_goal_path).astype(np.float32) / 224.0
+        start, goal = torch.from_numpy(start_goal[0]), torch.from_numpy(start_goal[1])
 
-        gt:torch.Tensor = torch.from_numpy(np.load(gt_path)).float()
+        gt_path_all = np.load(gt_path).astype(np.float32) / 224.0
+        random_idx = np.random.randint(len(gt_path_all))
+        gt_point = torch.from_numpy(gt_path_all[random_idx])
         
         return {
             "map": map_tensor,
             "start": start,
             "goal": goal,
-            "gt": gt
+            "gt": gt_point
         }
