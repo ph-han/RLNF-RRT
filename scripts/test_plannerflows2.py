@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from rlnf_rrt.data_pipeline.utils import get_device
-from rlnf_rrt.models.CustomPlannerFlows import CustomPlannerFlows
-from rlnf_rrt.data_pipeline.custom_dataset import RLNFDataset
+from rlnf_rrt.models.CustomPlannerFlows2 import CustomPlannerFlows
+from rlnf_rrt.data_pipeline.custom_dataset2 import RLNFDataset
 
 
 

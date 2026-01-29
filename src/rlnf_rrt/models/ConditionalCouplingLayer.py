@@ -43,7 +43,7 @@ class ConditionalAffineCouplingLayer(nn.Module):
         t = self.t_net(condition_input)
 
         y = x_masked + (1 - self.mask) * (x * torch.exp(s) + t)
-        log_det_jacob = torch.sum((1 - self.mask) * s, dim=1)
+        log_det_jacob = torch.sum((1 - self.mask) * s, dim=-1)
         return y, log_det_jacob
     
     def inverse(self, y, condition):
@@ -54,5 +54,5 @@ class ConditionalAffineCouplingLayer(nn.Module):
         t = self.t_net(condition_input)
 
         x = y_masked + (1 - self.mask) * (y - t) * torch.exp(-s)
-        log_det_jacob = -torch.sum((1 - self.mask) * s, dim=1)
+        log_det_jacob = -torch.sum((1 - self.mask) * s, dim=-1)
         return x, log_det_jacob

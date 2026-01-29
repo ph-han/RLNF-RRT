@@ -19,22 +19,23 @@ class ConditionalNF(nn.Module):
             y, log_det_jacob = layer(y, condition)
             log_det_tot += log_det_jacob
 
-        tanh_y = torch.tanh(y)
-        y = (tanh_y + 1.0) / 2.0
+        # tanh_y = torch.tanh(y)
+        # y = (tanh_y + 1.0) / 2.0
         
-        log_det_tanh = torch.sum(torch.log(1.0 - tanh_y**2 + 1e-6) - torch.log(torch.tensor(2.0)), dim=-1)
-        log_det_tot += log_det_tanh
+        # log_det_tanh = torch.sum(torch.log(1.0 - tanh_y**2 + 1e-6) - torch.log(torch.tensor(2.0)), dim=-1)
+        # log_det_tot += log_det_tanh
         
         return y, log_det_tot
     
     def inverse(self, y, condition):
-        y_clamped = torch.clamp(y * 2.0 - 1.0, -1.0 + 1e-6, 1.0 - 1e-6)
+        x = y
+        # y_clamped = torch.clamp(y * 2.0 - 1.0, -1.0 + 1e-6, 1.0 - 1e-6)
         
-        log_det_tanh_inv = -torch.sum(torch.log(1.0 - y_clamped**2 + 1e-6) - torch.log(torch.tensor(2.0)), dim=-1)
+        # log_det_tanh_inv = -torch.sum(torch.log(1.0 - y_clamped**2 + 1e-6) - torch.log(torch.tensor(2.0)), dim=-1)
         
-        x = 0.5 * torch.log((1.0 + y_clamped) / (1.0 - y_clamped))
+        # x = 0.5 * torch.log((1.0 + y_clamped) / (1.0 - y_clamped))
         
-        log_det_tot = log_det_tanh_inv
+        # log_det_tot = log_det_tanh_inv
 
         for layer in reversed(self.layers):
             x, log_det_jacob = layer.inverse(x, condition)

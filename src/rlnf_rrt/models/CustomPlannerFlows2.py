@@ -26,7 +26,7 @@ class CustomPlannerFlows(nn.Module):
         condition_rep = condition.unsqueeze(1).repeat(1, num_samples, 1)
         q_samples, ll = self.flow.forward(z.view(-1, z.size(-1)), condition_rep.view(-1, condition_rep.size(-1)))
         
-        return q_samples.view(batch_size, num_samples, -1), ll
+        return (q_samples.view(batch_size, num_samples, -1) + 1) / 2.0, ll
 
     def get_nll(self, gt_points, map_img, start, goal):
         condition = self._get_condition(map_img, start, goal)
