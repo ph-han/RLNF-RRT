@@ -14,3 +14,6 @@ data
 
 # result
 result
+
+# logfile
+*.log

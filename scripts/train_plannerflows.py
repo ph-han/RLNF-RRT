@@ -15,24 +15,24 @@ if __name__ == "__main__":
         [0.0, 1.0],
         [1.0, 0.0],
         [0.0, 1.0],
-        # [1.0, 0.0],
-        # [0.0, 1.0],
-        # [1.0, 0.0],         
-        # [0.0, 1.0],
-        # [1.0, 0.0],
-        # [0.0, 1.0],
-        # [1.0, 0.0],
-        # [0.0, 1.0],
-        # [1.0, 0.0],         
-        # [0.0, 1.0],
-        # [1.0, 0.0],
-        # [0.0, 1.0],
-        # [1.0, 0.0],
-        # [0.0, 1.0],
-        # [1.0, 0.0],         
-        # [0.0, 1.0],
-        # [1.0, 0.0],
-        # [0.0, 1.0]
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 0.0],         
+        [0.0, 1.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 0.0],         
+        [0.0, 1.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 0.0],         
+        [0.0, 1.0],
+        [1.0, 0.0],
+        [0.0, 1.0]
     ]
 
     device = get_device()
@@ -60,8 +60,8 @@ if __name__ == "__main__":
        
         print(f"[epoch {epoch}] avg loss : {avg_loss}")
         if (epoch + 1) % 10 == 0:
-            torch.save(model.state_dict(), f"../result/models/planner_flows_v3_ep{epoch+1}.pth")
+            torch.save(model.state_dict(), f"../result/models/planner_flows_v4_ep{epoch+1}.pth")
             print(f"Model saved at epoch {epoch+1}")
 
         if best_loss > avg_loss:
-            torch.save(model.state_dict(), f"../result/models/planner_flows_v3_best_loss.pth")
+            torch.save(model.state_dict(), f"../result/models/planner_flows_v4_best_loss.pth")
