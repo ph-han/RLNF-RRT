@@ -13,9 +13,18 @@ class ConditionalAffineCouplingLayer(nn.Module):
 
         self.condition_input_dim = self.input_dim + self.condition_dim
 
-        self.s_net = nn.Sequential(
+        self.injection_condi = nn.Sequential(
             nn.Linear(self.condition_input_dim, self.hidden_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(0.2),
+            
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.LeakyReLU(0.2),
+            
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.LeakyReLU(0.2)
+        )
+
+        self.s_net = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.ReLU(),
             nn.Linear(self.hidden_dim, self.input_dim),
@@ -23,8 +32,6 @@ class ConditionalAffineCouplingLayer(nn.Module):
         )
 
         self.t_net = nn.Sequential(
-            nn.Linear(self.condition_input_dim, self.hidden_dim),
-            nn.ReLU(),
             nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.ReLU(),
             nn.Linear(self.hidden_dim, self.input_dim)
@@ -35,7 +42,7 @@ class ConditionalAffineCouplingLayer(nn.Module):
 
     def forward(self, x, condition):
         x_masked = x * self.mask
-        condition_input = torch.cat([x_masked, condition], dim=-1)
+        condition_input = self.injection_condi(torch.cat([x_masked, condition], dim=-1))
 
         s = self.s_net(condition_input) * self.s_scale
         t = self.t_net(condition_input)
@@ -46,7 +53,7 @@ class ConditionalAffineCouplingLayer(nn.Module):
     
     def inverse(self, y, condition):
         y_masked = y * self.mask
-        condition_input = torch.cat([y_masked, condition], dim=-1)
+        condition_input = self.injection_condi(torch.cat([y_masked, condition], dim=-1))
 
         s = self.s_net(condition_input) * self.s_scale
         t = self.t_net(condition_input)

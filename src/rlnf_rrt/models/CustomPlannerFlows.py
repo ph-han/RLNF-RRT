@@ -2,22 +2,20 @@ import torch
 import torch.nn as nn
 
 from rlnf_rrt.models.CNF import ConditionalNF
-from rlnf_rrt.models.MapEncoder import MapEncoder
+from rlnf_rrt.models.CondiEncoder import CondiEncoder
 
 class CustomPlannerFlows(nn.Module):
     def __init__(self, masks, hidden_dim, env_latent_dim, state_dim=2):
         super().__init__()
-        self.encoder = MapEncoder(latent_dim=env_latent_dim)
+        self.encoder = CondiEncoder(latent_dim=env_latent_dim)
         
-        self.condition_dim = env_latent_dim + (state_dim * 2)
+        self.condition_dim = env_latent_dim
         
         self.flow = ConditionalNF(masks, hidden_dim, self.condition_dim)
 
     def _get_condition(self, map_img, start, goal):
-        w = self.encoder(map_img)
-        pos_cond = torch.cat([start, goal], dim=-1)
-        condition = torch.cat([w, pos_cond], dim=-1)
-        return condition
+        return self.encoder(map_img, start, goal)
+        
 
     def forward(self, map_img, start, goal, num_samples=1):
         condition = self._get_condition(map_img, start, goal)
@@ -34,7 +32,7 @@ class CustomPlannerFlows(nn.Module):
         condition = self._get_condition(map_img, start, goal)
         B, K, D = gt_points.shape
         gt_points = gt_points.view(B * K, D)
-        condition = condition.repeat_interleave(K, dim=0)
+        condition = condition.unsqueeze(1).expand(-1, K, -1).reshape(B * K, -1)
         z, log_det = self.flow.inverse(gt_points, condition)
         
         prior_log_prob = -0.5 * torch.sum(z**2, dim=-1)

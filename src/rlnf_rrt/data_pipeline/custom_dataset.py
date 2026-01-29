@@ -42,9 +42,9 @@ class RLNFDataset(Dataset):
         start, goal = torch.from_numpy(start_goal[0]), torch.from_numpy(start_goal[1])
 
         gt_path_all = np.load(gt_path).astype(np.float32) / 224.0
-        idx_uniform = np.linspace(0, gt_path_all.shape[0] - 1, 50).astype(int)
-        idx_random = np.random.choice(gt_path_all.shape[0], 50, replace=True)
-        gt_points = gt_path_all[np.concatenate([idx_uniform, idx_random])]
+        idx_uniform = np.linspace(0, gt_path_all.shape[0] - 1, 150).astype(int)
+        idx_random = np.random.choice(gt_path_all.shape[0], 150, replace=True)
+        gt_points = torch.from_numpy(gt_path_all[np.concatenate([idx_uniform, idx_random])])
         
         return {
             "map": map_tensor,
