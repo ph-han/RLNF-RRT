@@ -21,12 +21,13 @@ class RLNFDataset(Dataset):
         # self.gt_ss_list = []
 
         for row in tqdm(self.meta_data.iterrows(), total=len(self.meta_data)):
-            self.map_list.append(f"{dataset_path}/map/{row[1]['map_file']}")
-            self.start_goal_list.append(f"{dataset_path}/start_goal/{row[1]['start_goal_file']}")
-            self.gt_list.append(f"{dataset_path}/gt_path/{row[1]['gt_path_file']}")
+            if row[1]['clearance'] == 1 and row[1]['step_size'] == 1:
+                self.map_list.append(f"{dataset_path}/map/{row[1]['map_file']}")
+                self.start_goal_list.append(f"{dataset_path}/start_goal/{row[1]['start_goal_file']}")
+                self.gt_list.append(f"{dataset_path}/gt_path/{row[1]['gt_path_file']}")
     
     def __len__(self):
-        return len(self.meta_data)
+        return len(self.map_list)
     
     def __getitem__(self, idx):
         map_path:str = self.map_list[idx]
