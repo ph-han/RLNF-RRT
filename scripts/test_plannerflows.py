@@ -92,7 +92,7 @@ if __name__ == "__main__":
     model = CustomPlannerFlows(masks, hidden_dim, env_latent_dim).to(device)
     state = torch.load("../result/models/planner_flows_v5_best_loss.pth")
     model.load_state_dict(state)
-    dataset = RLNFDataset(split="valid")
+    dataset = RLNFDataset(split="test")
     dataloader = torch.utils.data.DataLoader(dataset, shuffle=False)
 
     visualize_samples(model, dataset, device, num_samples=1000)

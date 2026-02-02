@@ -95,7 +95,7 @@ if __name__ == "__main__":
             print(f"Model saved at epoch {epoch+1}")
             plot_loss_curve(train_losses, val_losses, filename=f"loss_curve_v5_ep{epoch+1}.png")
 
-        if valid_dataloader > avg_val_loss:
+        if best_val_loss > avg_val_loss:
             torch.save(model.state_dict(), f"../result/models/planner_flows_v5_best_loss.pth")
 
     plot_loss_curve(train_losses, val_losses, filename="loss_curve_v5_final.png")

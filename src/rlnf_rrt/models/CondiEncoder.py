@@ -22,8 +22,8 @@ class CondiEncoder(nn.Module):
     def forward(self, map_img, start, goal):
         w = self.map_encoder(map_img)
         pos_cond = torch.cat([start, goal], dim=-1)
-        pos_cond = self.start_goal_encoder(pos_cond)
+        # pos_cond = self.start_goal_encoder(pos_cond)
 
         condition = torch.cat([w, pos_cond], dim=-1)
-        condition = self.combi_encoder(condition)
+        # condition = self.combi_encoder(condition)
         return condition

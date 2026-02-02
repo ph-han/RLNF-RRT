@@ -9,7 +9,7 @@ class CustomPlannerFlows(nn.Module):
         super().__init__()
         self.encoder = CondiEncoder(latent_dim=env_latent_dim)
         
-        self.condition_dim = env_latent_dim
+        self.condition_dim = env_latent_dim + state_dim * 2
         
         self.flow = ConditionalNF(masks, hidden_dim, self.condition_dim)
 
