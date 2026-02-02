@@ -35,7 +35,8 @@ class RLNFDataset(Dataset):
         gt_path:str = self.gt_list[idx]
 
         map_img:Image = Image.open(map_path).convert('L')
-        map_np:np.ndarray = np.array(map_img, dtype=np.float32) / 255.0
+        # map_np:np.ndarray = np.array(map_img, dtype=np.float32) / 255.0
+        map_np:np.ndarray = np.flipud(np.array(map_img, dtype=np.float32)) / 255.0
 
         map_tensor:torch.Tensor = torch.from_numpy(map_np).unsqueeze(0).float()
 
