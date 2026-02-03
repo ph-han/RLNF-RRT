@@ -1,6 +1,6 @@
 """
 Example:
-  python scripts/visualize_flow_states.py --ckpt outputs/model.pt --split valid --idx 0 --num_samples 5000 --max_panels 8 --device cuda
+  python scripts/visualize_flow_states.py --ckpt outputs/model.pt --idx 0 --num_samples 5000 --save_gif --device cuda
 """
 
 import argparse
@@ -21,401 +21,142 @@ try:
 except Exception:
     RLNFDataset = None
 
-DEFAULT_MASKS = [
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-]
-
+# 기본 마스크 (모델 생성 시 사용한 것과 동일해야 함)
+DEFAULT_MASKS = [[1.0, 0.0], [0.0, 1.0]] * 12
 
 def _strip_module_prefix(state_dict: dict) -> dict:
-    if not any(k.startswith("module.") for k in state_dict.keys()):
-        return state_dict
     return {k.replace("module.", "", 1): v for k, v in state_dict.items()}
-
-
-def _parse_masks_string(masks_str: str) -> List[List[float]]:
-    masks = []
-    for layer in masks_str.split(";"):
-        layer = layer.strip()
-        if not layer:
-            continue
-        mask_vals = [float(x.strip()) for x in layer.split(",") if x.strip() != ""]
-        masks.append(mask_vals)
-    return masks
-
-
-def _load_masks_from_file(path: str) -> List[List[float]]:
-    if path.endswith(".pt") or path.endswith(".pth"):
-        data = torch.load(path, map_location="cpu")
-        if isinstance(data, dict) and "masks" in data:
-            return data["masks"]
-        return data
-    if path.endswith(".npy"):
-        data = np.load(path, allow_pickle=True)
-        return data.tolist()
-    with open(path, "r", encoding="utf-8") as f:
-        text = f.read()
-    return _parse_masks_string(text)
-
-
-def _infer_masks_from_state(state_dict: dict) -> Optional[List[List[float]]]:
-    masks = []
-    i = 0
-    while True:
-        key = f"flow.layers.{i}.mask"
-        if key not in state_dict:
-            break
-        mask_tensor = state_dict[key].detach().cpu().float()
-        masks.append(mask_tensor.tolist())
-        i += 1
-    return masks if masks else None
-
-
-def _infer_hidden_and_condition_dim(state_dict: dict) -> Tuple[Optional[int], Optional[int]]:
-    key = "flow.layers.0.s_net.0.weight"
-    if key not in state_dict:
-        return None, None
-    weight = state_dict[key]
-    hidden_dim = int(weight.shape[0])
-    condition_input_dim = int(weight.shape[1])
-    mask_key = "flow.layers.0.mask"
-    if mask_key not in state_dict:
-        return hidden_dim, None
-    input_dim = int(state_dict[mask_key].numel())
-    condition_dim = condition_input_dim - input_dim
-    return hidden_dim, condition_dim
-
 
 def load_model(args, device: torch.device) -> CustomPlannerFlows:
     ckpt = torch.load(args.ckpt, map_location="cpu")
-    if isinstance(ckpt, dict) and "state_dict" in ckpt:
-        state_dict = ckpt["state_dict"]
-    else:
-        state_dict = ckpt
+    state_dict = ckpt["state_dict"] if isinstance(ckpt, dict) and "state_dict" in ckpt else ckpt
     state_dict = _strip_module_prefix(state_dict)
 
-    masks = None
-    if isinstance(ckpt, dict) and "masks" in ckpt:
-        masks = ckpt["masks"]
-    if masks is None:
-        masks = _infer_masks_from_state(state_dict)
-    if masks is None and args.masks is not None:
-        masks = _parse_masks_string(args.masks)
-    if masks is None and args.masks_file is not None:
-        masks = _load_masks_from_file(args.masks_file)
-    if masks is None:
-        masks = DEFAULT_MASKS
-    if masks is None:
-        raise ValueError("Could not infer masks from checkpoint. Provide --masks or --masks_file.")
-
-    hidden_dim = args.hidden_dim
-    env_latent_dim = args.env_latent_dim
-    if hidden_dim is None or env_latent_dim is None:
-        inferred_hidden_dim, inferred_condition_dim = _infer_hidden_and_condition_dim(state_dict)
-        if hidden_dim is None:
-            hidden_dim = inferred_hidden_dim
-        if env_latent_dim is None and inferred_condition_dim is not None:
-            env_latent_dim = inferred_condition_dim - args.state_dim * 2
-    if hidden_dim is None or env_latent_dim is None:
-        raise ValueError("Could not infer hidden_dim/env_latent_dim from checkpoint. Provide CLI args.")
-
-    model = CustomPlannerFlows(masks, hidden_dim, env_latent_dim, state_dim=args.state_dim).to(device)
-    model.load_state_dict(state_dict, strict=True)
+    # 마스크 및 하이퍼파라미터 추론 (생략 가능하면 args에서 가져옴)
+    masks = ckpt.get("masks", DEFAULT_MASKS) if isinstance(ckpt, dict) else DEFAULT_MASKS
+    
+    # 모델 로드 (state_dim=2 고정)
+    model = CustomPlannerFlows(masks, args.hidden_dim, args.env_latent_dim, state_dim=2).to(device)
+    model.load_state_dict(state_dict, strict=False)
     model.eval()
     return model
 
+def get_data_sample(args, device: torch.device):
+    """데이터셋에서 특정 인덱스의 샘플(Map, Start, Goal, GT)을 가져옴"""
+    if RLNFDataset is None:
+        raise ImportError("RLNFDataset을 찾을 수 없습니다.")
+    
+    dataset = RLNFDataset(dataset_root_path=args.dataset_root, split=args.split)
+    sample = dataset[args.idx]
+    
+    return {
+        "map": sample["map"].unsqueeze(0).to(device),
+        "start": sample["start"].unsqueeze(0).to(device),
+        "goal": sample["goal"].unsqueeze(0).to(device),
+        "gt": sample["gt"].to(device) if "gt" in sample else None
+    }
 
-def get_condition(model: CustomPlannerFlows, args, device: torch.device):
-    map_img = None
-    start = None
-    goal = None
-    if RLNFDataset is not None:
-        try:
-            dataset = RLNFDataset(dataset_root_path=args.dataset_root, split=args.split)
-            sample = dataset[args.idx]
-            map_img = sample["map"].unsqueeze(0).to(device)
-            start = sample["start"].unsqueeze(0).to(device)
-            goal = sample["goal"].unsqueeze(0).to(device)
-        except Exception:
-            map_img = None
-
-    if map_img is None:
-        map_img = torch.zeros(1, 1, args.map_size, args.map_size, device=device, dtype=torch.float32)
-        start = torch.zeros(1, args.state_dim, device=device, dtype=torch.float32)
-        goal = torch.zeros(1, args.state_dim, device=device, dtype=torch.float32)
-
+def collect_flow_steps(model, sample, num_samples, is_inverse=False):
+    """레이어별 변환 과정을 수집"""
+    device = sample["map"].device
     with torch.no_grad():
-        condition = model._get_condition(map_img, start, goal)
-    return condition
-
-
-def collect_states(model: CustomPlannerFlows, condition: torch.Tensor, num_samples: int, include_squash: bool):
-    device = condition.device
-    input_dim = model.flow.layers[0].input_dim
-    z = torch.randn(num_samples, input_dim, device=device, dtype=torch.float32)
-    cond = condition.expand(num_samples, -1)
-
-    states = [z]
-    with torch.no_grad():
-        for layer in model.flow.layers:
-            z, _ = layer(z, cond)
-            states.append(z)
-        if include_squash:
-            tanh_z = torch.tanh(z)
-            z_squash = (tanh_z + 1.0) / 2.0
-            states.append(z_squash)
-    return states
-
-
-def _sample_gt_points(args, device: torch.device, num_samples: int) -> torch.Tensor:
-    if RLNFDataset is not None:
-        try:
-            dataset = RLNFDataset(dataset_root_path=args.dataset_root, split=args.split)
-            sample = dataset[args.idx]
-            gt = sample.get("gt", None)
-            if gt is not None:
-                gt = gt.reshape(gt.shape[0], -1).float()
-                if gt.shape[0] >= num_samples:
-                    idx = torch.randperm(gt.shape[0])[:num_samples]
-                    return gt[idx].to(device)
-                idx = torch.randint(0, gt.shape[0], (num_samples,))
-                return gt[idx].to(device)
-        except Exception:
-            pass
-    return torch.rand(num_samples, args.state_dim, device=device, dtype=torch.float32)
-
-
-def collect_states_inverse(
-    model: CustomPlannerFlows,
-    condition: torch.Tensor,
-    gt_points: torch.Tensor,
-    include_squash: bool,
-):
-    device = condition.device
-    cond = condition.expand(gt_points.shape[0], -1)
-
-    states = []
-    y = gt_points
-    if include_squash:
-        states.append(y)
-    y_clamped = torch.clamp(y * 2.0 - 1.0, -1.0 + 1e-6, 1.0 - 1e-6)
-    x = 0.5 * torch.log((1.0 + y_clamped) / (1.0 - y_clamped))
-    states.append(x)
-
-    with torch.no_grad():
-        for layer in reversed(model.flow.layers):
-            x, _ = layer.inverse(x, cond)
-            states.append(x)
-    return states
-
-
-def _pca_project(states_np: List[np.ndarray]) -> Tuple[List[np.ndarray], np.ndarray, np.ndarray]:
-    all_data = np.concatenate(states_np, axis=0)
-    mean = all_data.mean(axis=0, keepdims=True)
-    centered = all_data - mean
-    _, _, vt = np.linalg.svd(centered, full_matrices=False)
-    components = vt[:2]
-    projected = [(s - mean) @ components.T for s in states_np]
-    return projected, mean, components
-
-
-def _select_indices(num_states: int, max_panels: int) -> List[int]:
-    if max_panels is None or num_states <= max_panels:
-        return list(range(num_states))
-    idxs = np.linspace(0, num_states - 1, max_panels, dtype=int).tolist()
-    seen = set()
-    uniq = []
-    for idx in idxs:
-        if idx not in seen:
-            uniq.append(idx)
-            seen.add(idx)
-    return uniq
-
-
-def plot_states(states: List[torch.Tensor], labels: List[str], max_panels: int, save_path: str):
-    states_np = [s.detach().cpu().numpy().reshape(s.shape[0], -1) for s in states]
-    input_dim = states_np[0].shape[1]
-    sel = _select_indices(len(states_np), max_panels)
-    states_sel = [states_np[i] for i in sel]
-    labels_sel = [labels[i] for i in sel]
-
-    if input_dim > 2:
-        states_sel, _, _ = _pca_project(states_sel)
-        input_dim = 2
-
-    if input_dim == 1:
-        all_vals = np.concatenate(states_sel, axis=0).flatten()
-        x_min, x_max = float(all_vals.min()), float(all_vals.max())
-    else:
-        all_vals = np.concatenate(states_sel, axis=0)
-        x_min, x_max = float(all_vals[:, 0].min()), float(all_vals[:, 0].max())
-        y_min, y_max = float(all_vals[:, 1].min()), float(all_vals[:, 1].max())
-
-    n_panels = len(states_sel)
-    cols = int(math.ceil(math.sqrt(n_panels)))
-    rows = int(math.ceil(n_panels / cols))
-    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows))
-    if not isinstance(axes, np.ndarray):
-        axes = np.array([axes])
-    axes = axes.flatten()
-
-    for ax in axes[n_panels:]:
-        ax.axis("off")
-
-    for ax, data, title in zip(axes, states_sel, labels_sel):
-        if input_dim == 1:
-            ax.hist(data.flatten(), bins=50, density=True)
-            ax.set_xlim(x_min, x_max)
+        condition = model._get_condition(sample["map"], sample["start"], sample["goal"])
+        
+        if not is_inverse:
+            # Forward: Gaussian -> Data (-3~3)
+            curr = torch.randn(num_samples, 2, device=device)
+            states = [curr.cpu().numpy()]
+            cond_rep = condition.expand(num_samples, -1)
+            for layer in model.flow.layers:
+                curr, _ = layer(curr, cond_rep)
+                states.append(curr.cpu().numpy())
+            labels = [f"Step {i} (Gaussian)" if i==0 else f"Step {i}" for i in range(len(states))]
         else:
-            x = data[:, 0]
-            y = data[:, 1]
-            bins = 60
-            hist, xedges, yedges = np.histogram2d(x, y, bins=bins, range=[[x_min, x_max], [y_min, y_max]], density=True)
-            xcenters = 0.5 * (xedges[:-1] + xedges[1:])
-            ycenters = 0.5 * (yedges[:-1] + yedges[1:])
-            xx, yy = np.meshgrid(xcenters, ycenters)
-            ax.contour(xx, yy, hist.T, levels=8)
-            ax.set_xlim(x_min, x_max)
-            ax.set_ylim(y_min, y_max)
-        ax.set_title(title)
-    fig.tight_layout()
+            # Inverse: Data (-3~3) -> Gaussian
+            curr = sample["gt"]
+            if curr.shape[0] > num_samples:
+                curr = curr[:num_samples]
+            states = [curr.cpu().numpy()]
+            cond_rep = condition.expand(curr.size(0), -1)
+            for layer in reversed(model.flow.layers):
+                curr, _ = layer.inverse(curr, cond_rep)
+                states.append(curr.cpu().numpy())
+            states.append(torch.randn_like(curr).cpu().numpy()) # 타겟 비교용
+            labels = [f"Inv Step {i} (GT)" if i==0 else f"Inv Step {i}" for i in range(len(states)-1)] + ["Target Gaussian"]
+            
+    return states, labels
 
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    fig.savefig(save_path, dpi=150)
-    plt.close(fig)
+def plot_and_save(states, labels, save_path, max_panels=8):
+    """수집된 상태들을 서브플롯으로 시각화"""
+    num_steps = len(states)
+    indices = np.linspace(0, num_steps - 1, min(num_steps, max_panels), dtype=int)
+    
+    cols = min(4, len(indices))
+    rows = math.ceil(len(indices) / cols)
+    
+    fig, axes = plt.subplots(rows, cols, figsize=(cols*4, rows*4))
+    axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
+    for i, idx in enumerate(indices):
+        data = states[idx]
+        axes[i].scatter(data[:, 0], data[:, 1], s=2, alpha=0.5, color='royalblue')
+        axes[i].set_title(labels[idx])
+        # 데이터 범위가 -3~3이므로 축 고정
+        axes[i].set_xlim(-4, 4)
+        axes[i].set_ylim(-4, 4)
+        axes[i].grid(True, linestyle='--', alpha=0.6)
 
-def save_gif(states: List[torch.Tensor], labels: List[str], save_path: str):
-    states_np = [s.detach().cpu().numpy().reshape(s.shape[0], -1) for s in states]
-    input_dim = states_np[0].shape[1]
+    for j in range(i + 1, len(axes)):
+        axes[j].axis('off')
 
-    if input_dim > 2:
-        states_np, _, _ = _pca_project(states_np)
-        input_dim = 2
-
-    if input_dim == 1:
-        all_vals = np.concatenate(states_np, axis=0).flatten()
-        x_min, x_max = float(all_vals.min()), float(all_vals.max())
-    else:
-        all_vals = np.concatenate(states_np, axis=0)
-        x_min, x_max = float(all_vals[:, 0].min()), float(all_vals[:, 0].max())
-        y_min, y_max = float(all_vals[:, 1].min()), float(all_vals[:, 1].max())
-
-    fig, ax = plt.subplots(figsize=(5, 5))
-
-    def _plot_frame(idx: int):
-        ax.clear()
-        data = states_np[idx]
-        title = labels[idx]
-        if input_dim == 1:
-            ax.hist(data.flatten(), bins=50, density=True)
-            ax.set_xlim(x_min, x_max)
-        else:
-            x = data[:, 0]
-            y = data[:, 1]
-            bins = 60
-            hist, xedges, yedges = np.histogram2d(x, y, bins=bins, range=[[x_min, x_max], [y_min, y_max]], density=True)
-            xcenters = 0.5 * (xedges[:-1] + xedges[1:])
-            ycenters = 0.5 * (yedges[:-1] + yedges[1:])
-            xx, yy = np.meshgrid(xcenters, ycenters)
-            ax.contour(xx, yy, hist.T, levels=8)
-            ax.set_xlim(x_min, x_max)
-            ax.set_ylim(y_min, y_max)
-        ax.set_title(title)
-
-    anim = animation.FuncAnimation(fig, _plot_frame, frames=len(states_np), interval=300)
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    anim.save(save_path, writer=animation.PillowWriter(fps=3))
-    plt.close(fig)
-
-
-def build_labels(num_layers: int, include_squash: bool, inverse: bool) -> List[str]:
-    if not inverse:
-        labels = [f"z{idx}" for idx in range(num_layers + 1)]
-        if include_squash:
-            labels.append("squash")
-        return labels
-    labels = []
-    if include_squash:
-        labels.append("gt")
-    labels.append("pre_squash")
-    for idx in range(num_layers):
-        labels.append(f"z_inv{idx}")
-    return labels
-
-
-def resolve_device(device_arg: Optional[str]) -> torch.device:
-    if device_arg is None:
-        return get_device()
-    device_arg = device_arg.lower()
-    if device_arg == "cuda" and not torch.cuda.is_available():
-        return torch.device("cpu")
-    if device_arg == "mps" and not torch.backends.mps.is_available():
-        return torch.device("cpu")
-    return torch.device(device_arg)
-
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    print(f"Saved visualization to {save_path}")
+    plt.close()
 
 def main():
-    parser = argparse.ArgumentParser(description="Visualize flow states per coupling layer.")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--ckpt", type=str, required=True)
-    parser.add_argument("--split", type=str, default="valid")
     parser.add_argument("--idx", type=int, default=0)
-    parser.add_argument("--num_samples", type=int, default=1000)
-    parser.add_argument("--max_panels", type=int, default=8)
-    parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--include_squash", action="store_true")
+    parser.add_argument("--split", type=str, default="valid")
+    parser.add_argument("--num_samples", type=int, default=2000)
+    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--inverse", action="store_true", help="GT에서 Gaussian으로 가는 과정 시각화")
     parser.add_argument("--save_gif", action="store_true")
-    parser.add_argument("--inverse", action="store_true", help="Visualize inverse flow: gt -> z")
-
-    parser.add_argument("--hidden_dim", type=int, default=None)
-    parser.add_argument("--env_latent_dim", type=int, default=None)
-    parser.add_argument("--state_dim", type=int, default=2)
-    parser.add_argument("--masks", type=str, default=None, help="Semicolon-separated masks, e.g. '1,0;0,1'")
-    parser.add_argument("--masks_file", type=str, default=None, help="Path to masks file (.pt/.pth/.npy or text)")
-
+    
+    # 모델 복원을 위한 인자 (체크포인트에 정보가 없을 경우 대비)
+    parser.add_argument("--hidden_dim", type=int, default=256)
+    parser.add_argument("--env_latent_dim", type=int, default=64)
     parser.add_argument("--dataset_root", type=str, default="data")
-    parser.add_argument("--map_size", type=int, default=224)
-
+    
     args = parser.parse_args()
+    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
-    device = resolve_device(args.device)
+    # 1. 모델 및 데이터 로드
     model = load_model(args, device)
-    condition = get_condition(model, args, device)
-    if args.inverse:
-        gt_points = _sample_gt_points(args, device, args.num_samples)
-        states = collect_states_inverse(model, condition, gt_points, args.include_squash)
-    else:
-        states = collect_states(model, condition, args.num_samples, args.include_squash)
-    labels = build_labels(len(model.flow.layers), args.include_squash, args.inverse)
+    sample = get_data_sample(args, device)
 
-    out_path = os.path.join("outputs", f"flow_states_idx{args.idx}.png")
-    plot_states(states, labels, args.max_panels, out_path)
+    # 2. 상태 수집
+    states, labels = collect_flow_steps(model, sample, args.num_samples, is_inverse=args.inverse)
+
+    # 3. 결과 저장
+    mode = "inv" if args.inverse else "fwd"
+    save_path = f"outputs/flow_{mode}_idx{args.idx}.png"
+    plot_and_save(states, labels, save_path)
+
+    # 4. GIF 저장 (선택 사항)
     if args.save_gif:
-        gif_path = os.path.join("outputs", f"flow_states_idx{args.idx}.gif")
-        save_gif(states, labels, gif_path)
-
+        from matplotlib import animation
+        fig, ax = plt.subplots(figsize=(6, 6))
+        def update(i):
+            ax.clear()
+            ax.scatter(states[i][:, 0], states[i][:, 1], s=2, color='crimson')
+            ax.set_title(labels[i])
+            ax.set_xlim(-4, 4); ax.set_ylim(-4, 4)
+        
+        anim = animation.FuncAnimation(fig, update, frames=len(states), interval=200)
+        anim.save(f"outputs/flow_{mode}_idx{args.idx}.gif", writer='pillow')
+        print("Saved GIF.")
 
 if __name__ == "__main__":
     main()
