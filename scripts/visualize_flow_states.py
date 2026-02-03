@@ -21,6 +21,33 @@ try:
 except Exception:
     RLNFDataset = None
 
+DEFAULT_MASKS = [
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+]
+
 
 def _strip_module_prefix(state_dict: dict) -> dict:
     if not any(k.startswith("module.") for k in state_dict.keys()):
@@ -99,6 +126,8 @@ def load_model(args, device: torch.device) -> CustomPlannerFlows:
     if masks is None and args.masks_file is not None:
         masks = _load_masks_from_file(args.masks_file)
     if masks is None:
+        masks = DEFAULT_MASKS
+    if masks is None:
         raise ValueError("Could not infer masks from checkpoint. Provide --masks or --masks_file.")
 
     hidden_dim = args.hidden_dim
@@ -157,6 +186,48 @@ def collect_states(model: CustomPlannerFlows, condition: torch.Tensor, num_sampl
             tanh_z = torch.tanh(z)
             z_squash = (tanh_z + 1.0) / 2.0
             states.append(z_squash)
+    return states
+
+
+def _sample_gt_points(args, device: torch.device, num_samples: int) -> torch.Tensor:
+    if RLNFDataset is not None:
+        try:
+            dataset = RLNFDataset(dataset_root_path=args.dataset_root, split=args.split)
+            sample = dataset[args.idx]
+            gt = sample.get("gt", None)
+            if gt is not None:
+                gt = gt.reshape(gt.shape[0], -1).float()
+                if gt.shape[0] >= num_samples:
+                    idx = torch.randperm(gt.shape[0])[:num_samples]
+                    return gt[idx].to(device)
+                idx = torch.randint(0, gt.shape[0], (num_samples,))
+                return gt[idx].to(device)
+        except Exception:
+            pass
+    return torch.rand(num_samples, args.state_dim, device=device, dtype=torch.float32)
+
+
+def collect_states_inverse(
+    model: CustomPlannerFlows,
+    condition: torch.Tensor,
+    gt_points: torch.Tensor,
+    include_squash: bool,
+):
+    device = condition.device
+    cond = condition.expand(gt_points.shape[0], -1)
+
+    states = []
+    y = gt_points
+    if include_squash:
+        states.append(y)
+    y_clamped = torch.clamp(y * 2.0 - 1.0, -1.0 + 1e-6, 1.0 - 1e-6)
+    x = 0.5 * torch.log((1.0 + y_clamped) / (1.0 - y_clamped))
+    states.append(x)
+
+    with torch.no_grad():
+        for layer in reversed(model.flow.layers):
+            x, _ = layer.inverse(x, cond)
+            states.append(x)
     return states
 
 
@@ -280,10 +351,18 @@ def save_gif(states: List[torch.Tensor], labels: List[str], save_path: str):
     plt.close(fig)
 
 
-def build_labels(num_layers: int, include_squash: bool) -> List[str]:
-    labels = [f"z{idx}" for idx in range(num_layers + 1)]
+def build_labels(num_layers: int, include_squash: bool, inverse: bool) -> List[str]:
+    if not inverse:
+        labels = [f"z{idx}" for idx in range(num_layers + 1)]
+        if include_squash:
+            labels.append("squash")
+        return labels
+    labels = []
     if include_squash:
-        labels.append("squash")
+        labels.append("gt")
+    labels.append("pre_squash")
+    for idx in range(num_layers):
+        labels.append(f"z_inv{idx}")
     return labels
 
 
@@ -308,6 +387,7 @@ def main():
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--include_squash", action="store_true")
     parser.add_argument("--save_gif", action="store_true")
+    parser.add_argument("--inverse", action="store_true", help="Visualize inverse flow: gt -> z")
 
     parser.add_argument("--hidden_dim", type=int, default=None)
     parser.add_argument("--env_latent_dim", type=int, default=None)
@@ -323,8 +403,12 @@ def main():
     device = resolve_device(args.device)
     model = load_model(args, device)
     condition = get_condition(model, args, device)
-    states = collect_states(model, condition, args.num_samples, args.include_squash)
-    labels = build_labels(len(model.flow.layers), args.include_squash)
+    if args.inverse:
+        gt_points = _sample_gt_points(args, device, args.num_samples)
+        states = collect_states_inverse(model, condition, gt_points, args.include_squash)
+    else:
+        states = collect_states(model, condition, args.num_samples, args.include_squash)
+    labels = build_labels(len(model.flow.layers), args.include_squash, args.inverse)
 
     out_path = os.path.join("outputs", f"flow_states_idx{args.idx}.png")
     plot_states(states, labels, args.max_panels, out_path)
