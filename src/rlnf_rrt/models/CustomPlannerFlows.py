@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 
@@ -32,12 +33,16 @@ class CustomPlannerFlows(nn.Module):
 
     def inverse(self, gt_points, map_img, start, goal):
         condition = self._get_condition(map_img, start, goal)
-        B, K, D = gt_points.shape
+        B, K, D = gt_points.shape # B: 배치, K: 포인트 수, D: 차원(2)
+        
         gt_points = gt_points.view(B * K, D)
         condition = condition.unsqueeze(1).expand(-1, K, -1).reshape(B * K, -1)
+        
         z, log_det = self.flow.inverse(gt_points, condition)
         
-        prior_log_prob = -0.5 * torch.sum(z**2, dim=-1)
+        log_2pi = math.log(2.0 * math.pi)
+        prior_log_prob = -0.5 * (torch.sum(z**2, dim=-1) + D * log_2pi)
+        
         log_likelihood = prior_log_prob + log_det
         
         return -log_likelihood.mean()

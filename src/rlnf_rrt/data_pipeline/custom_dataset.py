@@ -12,15 +12,18 @@ class RLNFDataset(Dataset):
         dataset_root_path: str = "data",
         split: str = "train",
         gt_points_per_sample: int = 512,
-        gt_noise_px: float = 2.0,          # <-- 추천: 0.8px는 얇을 수 있음. 일단 2.0부터
+        gt_noise_px: float = 2.0,
         gt_noise_trials: int = 10,
         free_thresh: float = 0.5,
-        valid_deterministic: bool = True,  # <-- valid/test에서 랜덤 샘플링 고정
+        valid_deterministic: bool = True,
+        scale_factor: float = 3.0  # [-1, 1]에 곱할 값 (결과적으로 -3 ~ 3)
     ):
         assert split in ["train", "valid", "test"]
         self.split = split
         self.valid_deterministic = valid_deterministic
+        self.scale_factor = scale_factor
 
+        # 경로 설정 (사용자 환경에 맞게 조정 필요)
         PROJECT_ROOT: Path = Path(__file__).resolve().parents[3]
         dataset_path: str = f"{PROJECT_ROOT}/{dataset_root_path}/{split}"
 
@@ -29,7 +32,7 @@ class RLNFDataset(Dataset):
         self.start_goal_list: list[str] = []
         self.gt_list: list[str] = []
 
-        for _, row in tqdm(self.meta_data.iterrows(), total=len(self.meta_data)):
+        for _, row in tqdm(self.meta_data.iterrows(), total=len(self.meta_data), desc=f"Loading {split} metadata"):
             if row["clearance"] == 1 and row["step_size"] == 1:
                 self.map_list.append(f"{dataset_path}/map/{row['map_file']}")
                 self.start_goal_list.append(f"{dataset_path}/start_goal/{row['start_goal_file']}")
@@ -40,94 +43,93 @@ class RLNFDataset(Dataset):
         self.gt_noise_trials = int(gt_noise_trials)
         self.free_thresh = float(free_thresh)
 
-        # 데이터가 224x224라고 가정(너 코드와 동일)
         self.H = 224
         self.W = 224
-        self.norm = float(self.W - 1)  # <-- 핵심: /224 말고 /(W-1)로 통일
+        self.norm = float(self.W - 1)
 
-        # 픽셀 단위 노이즈를 [0,1] 좌표 노이즈로 변환
-        self.gt_sigma = self.gt_noise_px / self.norm
+        # [-3, 3] 스케일에 맞춘 노이즈 표준편차 계산
+        # (픽셀노이즈 / 전체픽셀) * 2.0(범위폭) * 3.0(스케일)
+        self.gt_sigma = (self.gt_noise_px / self.norm) * 2.0 * self.scale_factor
 
-    def __len__(self):
-        return len(self.map_list)
+    def _to_custom_range(self, val01: np.ndarray) -> np.ndarray:
+        return (val01 * 2.0 - 1.0) * self.scale_factor
 
-    def _is_free(self, map_np01: np.ndarray, x01: float, y01: float) -> bool:
-        # x01,y01 in [0,1]
+    def _to_zero_one(self, val_scaled: float) -> float:
+        """[-scale, scale] 범위를 다시 [0, 1]로 복구 (맵 체크용)"""
+        return ((val_scaled / self.scale_factor) + 1.0) / 2.0
+
+    def _is_free(self, map_np01: np.ndarray, x_scaled: float, y_scaled: float) -> bool:
+        # 스케일된 좌표를 다시 [0, 1]로 돌려서 픽셀 위치 확인
+        x01 = self._to_zero_one(x_scaled)
+        y01 = self._to_zero_one(y_scaled)
+        
         if not (0.0 <= x01 <= 1.0 and 0.0 <= y01 <= 1.0):
             return False
+            
         x = int(round(x01 * (self.W - 1)))
         y = int(round(y01 * (self.H - 1)))
+        
         if x < 0 or x >= self.W or y < 0 or y >= self.H:
             return False
 
-        # map이 흰색=free(1), 검정=obstacle(0)일 때:
+        # map: 흰색(1)=통과가능, 검정(0)=장애물
         return map_np01[y, x] > self.free_thresh
-        # 만약 네 맵이 반대로(흰색=obstacle)라면 위 줄을 아래로 바꿔:
-        # return map_np01[y, x] < self.free_thresh
 
-    def _tube_augment(self, gt01: np.ndarray, map_np01: np.ndarray, rng: np.random.RandomState | None = None) -> np.ndarray:
-        """
-        gt01: (N,2) in [0,1], 좌표는 (x,y)라고 가정
-        map_np01: (H,W) in [0,1]
-        rng: deterministic하게 만들고 싶으면 RandomState 넘기기
-        """
+    def _tube_augment(self, gt_scaled: np.ndarray, map_np01: np.ndarray, rng: np.random.RandomState | None = None) -> np.ndarray:
         if rng is None:
             rng = np.random
 
-        N = gt01.shape[0]
-        out = np.empty_like(gt01)
+        N = gt_scaled.shape[0]
+        out = np.empty_like(gt_scaled)
 
         for i in range(N):
-            p = gt01[i].astype(np.float32)
+            p = gt_scaled[i].astype(np.float32)
             ok = False
             for _ in range(self.gt_noise_trials):
                 q = p + rng.randn(2).astype(np.float32) * self.gt_sigma
 
-                # 핵심: clip하지 말고, 범위 밖이면 그냥 reject
                 if self._is_free(map_np01, float(q[0]), float(q[1])):
                     out[i] = q
                     ok = True
                     break
 
             if not ok:
-                out[i] = p  # fallback
+                out[i] = p  # 실패 시 원본 유지
         return out
+
+    def __len__(self):
+        return len(self.map_list)
 
     def __getitem__(self, idx: int):
         map_path = self.map_list[idx]
         start_goal_path = self.start_goal_list[idx]
         gt_path = self.gt_list[idx]
 
-        # ------------------
-        # map
-        # ------------------
+        # Map 로드
         map_img = Image.open(map_path).convert("L")
-        map_np = np.array(map_img, dtype=np.float32) / 255.0  # (H,W) in [0,1]
-        map_tensor = torch.from_numpy(map_np).unsqueeze(0).float()  # (1,H,W)
+        map_np = np.array(map_img, dtype=np.float32) / 255.0
+        map_tensor = torch.from_numpy(map_np).unsqueeze(0).float()
 
-        # ------------------
-        # start/goal  (픽셀 -> [0,1])
-        # ------------------
-        start_goal = np.load(start_goal_path).astype(np.float32) / self.norm  # <-- /(W-1)
-        start = torch.from_numpy(start_goal[0]).float()
-        goal  = torch.from_numpy(start_goal[1]).float()
+        # Start/Goal 로드 및 스케일 변환
+        start_goal01 = np.load(start_goal_path).astype(np.float32) / self.norm
+        start_goal_scaled = self._to_custom_range(start_goal01)
+        start = torch.from_numpy(start_goal_scaled[0]).float()
+        goal  = torch.from_numpy(start_goal_scaled[1]).float()
 
-        # ------------------
-        # gt points (픽셀 -> [0,1])
-        # ------------------
-        gt_all = np.load(gt_path).astype(np.float32) / self.norm  # (M,2)
+        # GT Path 로드 및 스케일 변환
+        gt_all01 = np.load(gt_path).astype(np.float32) / self.norm
+        gt_all_scaled = self._to_custom_range(gt_all01)
 
-        M = gt_all.shape[0]
+        M = gt_all_scaled.shape[0]
         if M == 0:
-            # 방어 코드: 혹시 빈 gt가 있을 때
             gt = np.zeros((self.gt_points_per_sample, 2), dtype=np.float32)
             return {"map": map_tensor, "start": start, "goal": goal, "gt": torch.from_numpy(gt).float()}
 
+        # 샘플링 개수 맞추기
         K = int(self.gt_points_per_sample)
         K1 = K // 3
         K2 = K - K1
 
-        # valid/test의 흔들림을 줄이기 위해 deterministic하게 만들기
         if self.valid_deterministic and self.split != "train":
             rng = np.random.RandomState(idx)
         else:
@@ -135,14 +137,17 @@ class RLNFDataset(Dataset):
 
         idx_uniform = np.linspace(0, M - 1, K1).astype(int)
         idx_random  = rng.choice(M, K2, replace=True)
-        gt = gt_all[np.concatenate([idx_uniform, idx_random])].astype(np.float32)
+        gt = gt_all_scaled[np.concatenate([idx_uniform, idx_random])].astype(np.float32)
 
-        # ------------------
-        # tube augmentation: train에만!
-        # ------------------
+        # Train 데이터인 경우 Tube Augmentation 적용
         if self.split == "train":
             gt = self._tube_augment(gt, map_np, rng=rng)
 
-        gt_points = torch.from_numpy(gt).float()  # (K,2)
+        gt_points = torch.from_numpy(gt).float()
 
-        return {"map": map_tensor, "start": start, "goal": goal, "gt": gt_points}
+        return {
+            "map": map_tensor, 
+            "start": start, 
+            "goal": goal, 
+            "gt": gt_points
+        }

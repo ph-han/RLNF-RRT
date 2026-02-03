@@ -13,36 +13,38 @@ class ConditionalAffineCouplingLayer(nn.Module):
         self.register_buffer('mask', torch.tensor(mask, dtype=torch.float32))
 
         self.condition_input_dim = self.input_dim + self.condition_dim
+        
         self.s_net = nn.Sequential(
             nn.Linear(self.condition_input_dim, self.hidden_dim),
             nn.LeakyReLU(0.2),
-            
             nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.LeakyReLU(0.2),
-
             nn.Linear(self.hidden_dim, self.input_dim)
         )
 
         self.t_net = nn.Sequential(
             nn.Linear(self.condition_input_dim, self.hidden_dim),
             nn.LeakyReLU(0.2),
-            
             nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.LeakyReLU(0.2),
-
             nn.Linear(self.hidden_dim, self.input_dim)
         )
 
-
         self.s_gain = nn.Parameter(torch.ones(self.input_dim))
 
+        # --- [추가/수정] 초기 발산 방지를 위한 가중치 초기화 ---
+        # 마지막 레이어를 0에 가깝게 초기화하여 초기 출력이 Identity(y=x)가 되도록 유도합니다.
+        nn.init.zeros_(self.s_net[-1].weight)
+        nn.init.zeros_(self.s_net[-1].bias)
+        nn.init.zeros_(self.t_net[-1].weight)
+        nn.init.zeros_(self.t_net[-1].bias)
+        # --------------------------------------------------
 
     def forward(self, x, condition):
         x_masked = x * self.mask
-
         coupling_input = torch.cat([x_masked, condition], dim=-1)
 
-        s = torch.sigmoid(self.s_net(coupling_input)) * self.s_gain
+        s = torch.tanh(self.s_net(coupling_input)) * self.s_max * self.s_gain
         t = self.t_net(coupling_input)
 
         y = x_masked + (1 - self.mask) * (x * torch.exp(s) + t)
@@ -51,10 +53,9 @@ class ConditionalAffineCouplingLayer(nn.Module):
     
     def inverse(self, y, condition):
         y_masked = y * self.mask
-        
         coupling_input = torch.cat([y_masked, condition], dim=-1)
 
-        s = torch.sigmoid(self.s_net(coupling_input))
+        s = torch.tanh(self.s_net(coupling_input)) * self.s_max * self.s_gain
         t = self.t_net(coupling_input)
 
         x = y_masked + (1 - self.mask) * (y - t) * torch.exp(-s)
