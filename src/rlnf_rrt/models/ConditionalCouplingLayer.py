@@ -42,7 +42,7 @@ class ConditionalAffineCouplingLayer(nn.Module):
 
         coupling_input = torch.cat([x_masked, condition], dim=-1)
 
-        s = torch.tanh(self.s_net(coupling_input)) * self.s_max * self.s_gain
+        s = torch.sigmoid(self.s_net(coupling_input)) * self.s_gain
         t = self.t_net(coupling_input)
 
         y = x_masked + (1 - self.mask) * (x * torch.exp(s) + t)
@@ -54,7 +54,7 @@ class ConditionalAffineCouplingLayer(nn.Module):
         
         coupling_input = torch.cat([y_masked, condition], dim=-1)
 
-        s = torch.tanh(self.s_net(coupling_input)) * self.s_max * self.s_gain
+        s = torch.sigmoid(self.s_net(coupling_input))
         t = self.t_net(coupling_input)
 
         x = y_masked + (1 - self.mask) * (y - t) * torch.exp(-s)
