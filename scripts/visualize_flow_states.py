@@ -22,7 +22,7 @@ except Exception:
     RLNFDataset = None
 
 # 기본 마스크 (모델 생성 시 사용한 것과 동일해야 함)
-DEFAULT_MASKS = [[1.0, 0.0], [0.0, 1.0]] * 12
+DEFAULT_MASKS = [[1.0, 0.0], [0.0, 1.0]] * 6
 
 def _strip_module_prefix(state_dict: dict) -> dict:
     return {k.replace("module.", "", 1): v for k, v in state_dict.items()}
@@ -141,7 +141,7 @@ def main():
 
     # 3. 결과 저장
     mode = "inv" if args.inverse else "fwd"
-    save_path = f"outputs/flow_{mode}_idx{args.idx}.png"
+    save_path = f"flow_{mode}_idx{args.idx}.png"
     plot_and_save(states, labels, save_path)
 
     # 4. GIF 저장 (선택 사항)
@@ -155,7 +155,7 @@ def main():
             ax.set_xlim(-4, 4); ax.set_ylim(-4, 4)
         
         anim = animation.FuncAnimation(fig, update, frames=len(states), interval=200)
-        anim.save(f"outputs/flow_{mode}_idx{args.idx}.gif", writer='pillow')
+        anim.save(f"flow_{mode}_idx{args.idx}.gif", writer='pillow')
         print("Saved GIF.")
 
 if __name__ == "__main__":

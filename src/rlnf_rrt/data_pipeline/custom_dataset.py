@@ -149,8 +149,8 @@ class RLNFDataset(Dataset):
         gt = gt_all_scaled[np.concatenate([idx_uniform, idx_random])].astype(np.float32)
 
         # Train 데이터인 경우 Tube Augmentation 적용
-        if self.split == "train":
-            gt = self._tube_augment(gt, map_np, rng=rng)
+        # if self.split == "train":
+        gt = self._tube_augment(gt, map_np, rng=rng)
 
         gt_points = torch.from_numpy(gt).float()
 
