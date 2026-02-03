@@ -19,27 +19,19 @@ sys.path.append(str(project_root / "src"))
 from rlnf_rrt.data_pipeline.custom_dataset import RLNFDataset
 
 
-def _to_xy(points: np.ndarray, w: int, h: int) -> np.ndarray:
-    pts = points.reshape(-1, 2)
-    xy = pts.copy()
-    xy[:, 0] = xy[:, 0] * w
-    xy[:, 1] = xy[:, 1] * h
-    return xy
-
-
-def render_sample(sample: dict, idx: int, show_gt: bool = True):
+def render_sample(sample: dict, idx: int, dataset: RLNFDataset, show_gt: bool = True):
     map_img = sample["map"].squeeze().numpy()
     h, w = map_img.shape
 
-    start = _to_xy(sample["start"].numpy(), w, h)[0]
-    goal = _to_xy(sample["goal"].numpy(), w, h)[0]
+    start = dataset.scaled_to_pixel(sample["start"].numpy())[0]
+    goal = dataset.scaled_to_pixel(sample["goal"].numpy())[0]
 
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.imshow(map_img, cmap="gray", vmin=0, vmax=1, origin="lower")
     ax.scatter(start[0], start[1], c="lime", s=80, marker="o", label="start", edgecolors="black")
     ax.scatter(goal[0], goal[1], c="red", s=80, marker="X", label="goal", edgecolors="black")
     if show_gt and "gt" in sample:
-        gt = _to_xy(sample["gt"].numpy(), w, h)
+        gt = dataset.scaled_to_pixel(sample["gt"].numpy())
         ax.scatter(gt[:, 0], gt[:, 1], c="cyan", s=10, alpha=0.6, label="gt")
     ax.set_title(f"Sample {idx}")
     ax.set_xticks([])
@@ -64,17 +56,14 @@ class DatasetViewer:
         self.ax.clear()
         sample = self.dataset[self.idx]
         map_img = sample["map"].squeeze().numpy()
-        h, w = map_img.shape
-
-        start = _to_xy(sample["start"].numpy(), w, h)[0]
-        goal = _to_xy(sample["goal"].numpy(), w, h)[0]
+        start = self.dataset.scaled_to_pixel(sample["start"].numpy())[0]
+        goal = self.dataset.scaled_to_pixel(sample["goal"].numpy())[0]
 
         self.ax.imshow(map_img, cmap="gray", vmin=0, vmax=1, origin="lower")
         self.ax.scatter(start[0], start[1], c="lime", s=80, marker="o", label="start", edgecolors="black")
         self.ax.scatter(goal[0], goal[1], c="red", s=80, marker="X", label="goal", edgecolors="black")
         if self.show_gt and "gt" in sample:
-            print(sample["gt"].numpy())
-            gt = _to_xy(sample["gt"].numpy(), w, h)
+            gt = self.dataset.scaled_to_pixel(sample["gt"].numpy())
             self.ax.scatter(gt[:, 0], gt[:, 1], c="cyan", s=10, alpha=0.6, label="gt")
             
         self.ax.set_title(f"Sample {self.idx}")
@@ -118,7 +107,7 @@ def main():
         end_idx = min(len(dataset), start_idx + args.num if args.num is not None else start_idx + 1)
         for i in range(start_idx, end_idx):
             sample = dataset[i]
-            fig = render_sample(sample, i, show_gt=not args.no_gt)
+            fig = render_sample(sample, i, dataset, show_gt=not args.no_gt)
             out_path = os.path.join(args.save_dir, f"sample_{i}.png")
             fig.savefig(out_path, dpi=150)
             plt.close(fig)
@@ -131,13 +120,13 @@ def main():
 
     if args.show:
         sample = dataset[args.idx]
-        fig = render_sample(sample, args.idx, show_gt=not args.no_gt)
+        fig = render_sample(sample, args.idx, dataset, show_gt=not args.no_gt)
         plt.show()
         plt.close(fig)
         return
 
     sample = dataset[args.idx]
-    fig = render_sample(sample, args.idx, show_gt=not args.no_gt)
+    fig = render_sample(sample, args.idx, dataset, show_gt=not args.no_gt)
     out_path = f"sample_{args.idx}.png"
     fig.savefig(out_path, dpi=150)
     plt.close(fig)

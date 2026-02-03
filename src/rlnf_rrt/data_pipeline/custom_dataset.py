@@ -12,7 +12,7 @@ class RLNFDataset(Dataset):
         dataset_root_path: str = "data",
         split: str = "train",
         gt_points_per_sample: int = 512,
-        gt_noise_px: float = 2.0,
+        gt_noise_px: float = 10.0,
         gt_noise_trials: int = 10,
         free_thresh: float = 0.5,
         valid_deterministic: bool = True,
@@ -57,6 +57,15 @@ class RLNFDataset(Dataset):
     def _to_zero_one(self, val_scaled: float) -> float:
         """[-scale, scale] 범위를 다시 [0, 1]로 복구 (맵 체크용)"""
         return ((val_scaled / self.scale_factor) + 1.0) / 2.0
+
+    def scaled_to_pixel(self, points_scaled: np.ndarray) -> np.ndarray:
+        """[-scale, scale] 좌표를 픽셀 좌표로 변환 (시각화용)."""
+        pts = np.asarray(points_scaled, dtype=np.float32).reshape(-1, 2)
+        pts01 = ((pts / self.scale_factor) + 1.0) / 2.0
+        xy = np.empty_like(pts01)
+        xy[:, 0] = pts01[:, 0] * (self.W - 1)
+        xy[:, 1] = pts01[:, 1] * (self.H - 1)
+        return xy
 
     def _is_free(self, map_np01: np.ndarray, x_scaled: float, y_scaled: float) -> bool:
         # 스케일된 좌표를 다시 [0, 1]로 돌려서 픽셀 위치 확인
