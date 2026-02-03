@@ -82,11 +82,11 @@ def collect_flow_steps(model, sample, num_samples, is_inverse=False):
                 curr, _ = layer.inverse(curr, cond_rep)
                 states.append(curr.cpu().numpy())
             states.append(torch.randn_like(curr).cpu().numpy()) # 타겟 비교용
-            labels = [f"Inv Step {i} (GT)" if i==0 else f"Inv Step {i}" for i in range(len(states)-1)] + ["Target Gaussian"]
+            labels = [f"Inv Step {i} (GT)" if i==0 else f"Inv Step {i}" for i in range(len(states)-2)] + ["Final Inv Step", "Target Gaussian"]
             
     return states, labels
 
-def plot_and_save(states, labels, save_path, max_panels=8):
+def plot_and_save(states, labels, save_path, max_panels=24):
     """수집된 상태들을 서브플롯으로 시각화"""
     num_steps = len(states)
     indices = np.linspace(0, num_steps - 1, min(num_steps, max_panels), dtype=int)

@@ -14,8 +14,9 @@ class ConditionalNF(nn.Module):
         y = x
         log_det_tot = torch.zeros(x.size(0), device=x.device, dtype=x.dtype)
         
-        for layer in self.layers:
-            y, log_det_jacob = layer(y, condition)
+        for idx, layer in enumerate(self.layers):
+            layer_condition = condition if idx == (len(self.layers)-1) else None
+            y, log_det_jacob = layer(y, layer_condition)
             log_det_tot += log_det_jacob
 
         
@@ -25,8 +26,10 @@ class ConditionalNF(nn.Module):
         x = y
         log_det_tot = torch.zeros(y.size(0), device=y.device, dtype=y.dtype)
 
-        for layer in reversed(self.layers):
-            x, log_det_jacob = layer.inverse(x, condition)
+        for idx, layer in enumerate(reversed(self.layers)):
+            # Only the original first layer (self.layers[0]) gets the condition.
+            layer_condition = condition if layer is self.layers[-1] else None
+            x, log_det_jacob = layer.inverse(x, layer_condition)
             log_det_tot += log_det_jacob
 
         return x, log_det_tot

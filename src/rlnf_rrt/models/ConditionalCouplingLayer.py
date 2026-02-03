@@ -42,7 +42,16 @@ class ConditionalAffineCouplingLayer(nn.Module):
 
     def forward(self, x, condition):
         x_masked = x * self.mask
+        if condition is None:
+            # Keep input shape consistent with condition_dim by padding zeros.
+            condition = torch.zeros(
+                x_masked.size(0),
+                self.condition_dim,
+                device=x_masked.device,
+                dtype=x_masked.dtype,
+            )
         coupling_input = torch.cat([x_masked, condition], dim=-1)
+
 
         s = torch.tanh(self.s_net(coupling_input)) * self.s_max * self.s_gain
         t = self.t_net(coupling_input)
@@ -53,6 +62,13 @@ class ConditionalAffineCouplingLayer(nn.Module):
     
     def inverse(self, y, condition):
         y_masked = y * self.mask
+        if condition is None:
+            condition = torch.zeros(
+                y_masked.size(0),
+                self.condition_dim,
+                device=y_masked.device,
+                dtype=y_masked.dtype,
+            )
         coupling_input = torch.cat([y_masked, condition], dim=-1)
 
         s = torch.tanh(self.s_net(coupling_input)) * self.s_max * self.s_gain
