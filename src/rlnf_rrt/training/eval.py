@@ -18,7 +18,7 @@ def eval_cnf(model, dataloader, device, epoch, num_epochs):
             condition_start = batch['start'].to(device)
             condition_goal = batch['goal'].to(device)
             gt = batch['gt'].to(device)
-            loss = model.get_nll(gt, condition_map, condition_start, condition_goal)
+            loss = model.inverse(gt, condition_map, condition_start, condition_goal)
 
             running_loss += loss.item()
             loop.set_postfix(val_loss=loss.item())
