@@ -8,9 +8,9 @@ from torch.utils.data import Dataset
 
 class RLNFDataset(Dataset):
     def __init__(self, dataset_root_path: str="data", split: str="train",
-                 gt_points_per_sample: int=1000,
-                 gt_noise_px: float=0.7,     # px 단위 (0.3~1.0 추천)
-                 gt_noise_trials: int=8,
+                 gt_points_per_sample: int=512,
+                 gt_noise_px: float=0.8,
+                 gt_noise_trials: int=10,
                  free_thresh: float=0.5):
         assert split in ["train", "valid", "test"]
         PROJECT_ROOT: Path = Path(__file__).resolve().parents[3]
@@ -87,7 +87,7 @@ class RLNFDataset(Dataset):
 
         K = self.gt_points_per_sample
         # mix: uniform + random
-        K1 = K // 2
+        K1 = K // 3
         K2 = K - K1
         idx_uniform = np.linspace(0, gt_all.shape[0] - 1, K1).astype(int)
         idx_random  = np.random.choice(gt_all.shape[0], K2, replace=True)

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class ConditionalAffineCouplingLayer(nn.Module):
-    def __init__(self, mask, hidden_dim, condition_dim, s_max=0.5):
+    def __init__(self, mask, hidden_dim, condition_dim, s_max=2.0):
         super().__init__()
 
         self.input_dim = len(mask)
