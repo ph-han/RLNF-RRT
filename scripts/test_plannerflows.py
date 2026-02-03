@@ -90,9 +90,9 @@ if __name__ == "__main__":
     num_epochs = 10
 
     model = CustomPlannerFlows(masks, hidden_dim, env_latent_dim).to(device)
-    state = torch.load("../result/models/planner_flows_v5_best_loss.pth")
+    state = torch.load("../result/models/planner_flows_v5_ep60.pth")
     model.load_state_dict(state)
-    dataset = RLNFDataset(split="test")
+    dataset = RLNFDataset(split="train")
     dataloader = torch.utils.data.DataLoader(dataset, shuffle=False)
 
     visualize_samples(model, dataset, device, num_samples=1000)

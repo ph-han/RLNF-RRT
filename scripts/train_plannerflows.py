@@ -87,13 +87,11 @@ if __name__ == "__main__":
         avg_val_loss = eval_cnf(model, valid_dataloader, device, epoch, num_epochs)
         val_losses.append(avg_val_loss)
         
-        # scheduler.step()
-       
         print(f"[epoch {epoch}] avg loss : {avg_loss}")
         if (epoch + 1) % 10 == 0:
-            torch.save(model.state_dict(), f"../result/models/planner_flows_v5_ep{epoch+1}.pth")
+            torch.save(model.state_dict(), f"../result/models/planner_flows_v1_ep{epoch+1}.pth")
             print(f"Model saved at epoch {epoch+1}")
-            plot_loss_curve(train_losses, val_losses, filename=f"loss_curve_v5_ep{epoch+1}.png")
+            plot_loss_curve(train_losses, val_losses, filename=f"loss_curve_v1_ep{epoch+1}.png")
 
         if best_val_loss > avg_val_loss:
             torch.save(model.state_dict(), f"../result/models/planner_flows_v5_best_loss.pth")
