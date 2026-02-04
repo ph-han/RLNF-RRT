@@ -48,7 +48,6 @@ class ConditionalNF(nn.Module):
         log_det_tot = torch.zeros(x.size(0), device=x.device, dtype=x.dtype)
         for layer in self.layers:
             y, ld = layer(y, condition)
-            y = y[:, [1, 0]]
             log_det_tot += ld
         return y, log_det_tot
 
@@ -56,7 +55,6 @@ class ConditionalNF(nn.Module):
         x = y
         log_det_tot = torch.zeros(y.size(0), device=y.device, dtype=y.dtype)
         for layer in reversed(self.layers):
-            x = x[:, [1, 0]]
             x, ld = layer.inverse(x, condition)
             log_det_tot += ld
         return x, log_det_tot
