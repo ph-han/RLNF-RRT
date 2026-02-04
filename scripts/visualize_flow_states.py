@@ -63,7 +63,7 @@ def collect_flow_steps(model, sample, num_samples, is_inverse=False):
         condition = model._get_condition(sample["map"], sample["start"], sample["goal"])
         
         if not is_inverse:
-            # Forward: Gaussian -> Data (-3~3)
+            # Forward: Gaussian -> Data (-1~1)
             curr = torch.randn(num_samples, 2, device=device)
             states = [curr.cpu().numpy()]
             cond_rep = condition.expand(num_samples, -1)
@@ -72,7 +72,7 @@ def collect_flow_steps(model, sample, num_samples, is_inverse=False):
                 states.append(curr.cpu().numpy())
             labels = [f"Step {i} (Gaussian)" if i==0 else f"Step {i}" for i in range(len(states))]
         else:
-            # Inverse: Data (-3~3) -> Gaussian
+            # Inverse: Data (-1~1) -> Gaussian
             curr = sample["gt"]
             if curr.shape[0] > num_samples:
                 curr = curr[:num_samples]
@@ -101,9 +101,9 @@ def plot_and_save(states, labels, save_path, max_panels=300):
         data = states[idx]
         axes[i].scatter(data[:, 0], data[:, 1], s=2, alpha=0.5, color='royalblue')
         axes[i].set_title(labels[idx])
-        # 데이터 범위가 -3~3이므로 축 고정
-        axes[i].set_xlim(-4, 4)
-        axes[i].set_ylim(-4, 4)
+        # 데이터 범위가 -1~1이므로 축 고정
+        axes[i].set_xlim(-1.0, 1.0)
+        axes[i].set_ylim(-1.0, 1.0)
         axes[i].grid(True, linestyle='--', alpha=0.6)
 
     for j in range(i + 1, len(axes)):
@@ -152,7 +152,7 @@ def main():
             ax.clear()
             ax.scatter(states[i][:, 0], states[i][:, 1], s=2, color='crimson')
             ax.set_title(labels[i])
-            ax.set_xlim(-4, 4); ax.set_ylim(-4, 4)
+            ax.set_xlim(-1.0, 1.0); ax.set_ylim(-1.0, 1.0)
         
         anim = animation.FuncAnimation(fig, update, frames=len(states), interval=200)
         anim.save(f"flow_{mode}_idx{args.idx}.gif", writer='pillow')

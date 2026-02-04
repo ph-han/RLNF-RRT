@@ -37,11 +37,10 @@ class DatasetViewer:
         
         self.ax.imshow(map_img, cmap='gray', vmin=0, vmax=1, origin='upper')
         
-        # Coordinates
-        W, H = 224, 224
-        start = data['start'].numpy() * W
-        goal = data['goal'].numpy() * W
-        gt = data['gt'].numpy() * W
+        # Coordinates (scaled -1~1 -> pixel)
+        start = self.dataset.scaled_to_pixel(data['start'].numpy())[0]
+        goal = self.dataset.scaled_to_pixel(data['goal'].numpy())[0]
+        gt = self.dataset.scaled_to_pixel(data['gt'].numpy())
         
         # Scatter
         # self.ax.scatter(start[0], start[1], c='red', s=100, label='Start', edgecolors='white', zorder=5)

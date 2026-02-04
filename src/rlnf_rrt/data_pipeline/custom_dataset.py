@@ -16,7 +16,7 @@ class RLNFDataset(Dataset):
         gt_noise_trials: int = 10,
         free_thresh: float = 0.5,
         valid_deterministic: bool = True,
-        scale_factor: float = 3.0  # [-1, 1]에 곱할 값 (결과적으로 -3 ~ 3)
+        scale_factor: float = 1.0  # [-1, 1]에 곱할 값 (결과적으로 -1 ~ 1)
     ):
         assert split in ["train", "valid", "test"]
         self.split = split
@@ -47,8 +47,8 @@ class RLNFDataset(Dataset):
         self.W = 224
         self.norm = float(self.W - 1)
 
-        # [-3, 3] 스케일에 맞춘 노이즈 표준편차 계산
-        # (픽셀노이즈 / 전체픽셀) * 2.0(범위폭) * 3.0(스케일)
+        # [-1, 1] 스케일에 맞춘 노이즈 표준편차 계산
+        # (픽셀노이즈 / 전체픽셀) * 2.0(범위폭) * scale_factor(스케일)
         self.gt_sigma = (self.gt_noise_px / self.norm) * 2.0 * self.scale_factor
 
     def _to_custom_range(self, val01: np.ndarray) -> np.ndarray:
