@@ -17,7 +17,7 @@ def train_cnf(model, dataloader:torch.utils.data.DataLoader, optimizer:torch.opt
 
 
         optimizer.zero_grad()
-        loss = model.inverse(gt, condition_map, condition_start, condition_goal)
+        loss = model.nll(gt, condition_map, condition_start, condition_goal)
         loss.backward()
         optimizer.step()
 
