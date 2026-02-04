@@ -29,7 +29,7 @@ def plot_loss_curve(train_losses, val_losses, save_dir="../result/images", filen
     plt.close()
 
 if __name__ == "__main__":
-    masks = [[1.0, 0.0], [0.0, 1.0]] * 32
+    masks = [[1.0, 0.0], [0.0, 1.0]] * 4
 
     device = get_device()
     hidden_dim = 128
@@ -64,12 +64,12 @@ if __name__ == "__main__":
         
         print(f"[epoch {epoch}] avg loss : {avg_loss}")
         if (epoch + 1) % 10 == 0:
-            torch.save(model.state_dict(), f"../result/models/planner_flows_v1_ep{epoch+1}.pth")
+            torch.save(model.state_dict(), f"../result/models/planner_flows_v7_ep{epoch+1}.pth")
             print(f"Model saved at epoch {epoch+1}")
-            plot_loss_curve(train_losses, val_losses, filename=f"loss_curve_v1_ep{epoch+1}.png")
+            plot_loss_curve(train_losses, val_losses, filename=f"loss_curve_v7_ep{epoch+1}.png")
 
         if best_val_loss > avg_val_loss:
-            torch.save(model.state_dict(), f"../result/models/planner_flows_v5_best_loss.pth")
+            torch.save(model.state_dict(), f"../result/models/planner_flows_v7_best_loss.pth")
 
-    plot_loss_curve(train_losses, val_losses, filename="loss_curve_v5_final.png")
+    plot_loss_curve(train_losses, val_losses, filename="loss_curve_v7_final.png")
     print("Training finished.")

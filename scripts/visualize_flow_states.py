@@ -22,7 +22,7 @@ except Exception:
     RLNFDataset = None
 
 # 기본 마스크 (모델 생성 시 사용한 것과 동일해야 함)
-DEFAULT_MASKS = [[1.0, 0.0], [0.0, 1.0]] * 6
+DEFAULT_MASKS = [[1.0, 0.0], [0.0, 1.0]] * 128
 
 def _strip_module_prefix(state_dict: dict) -> dict:
     return {k.replace("module.", "", 1): v for k, v in state_dict.items()}
@@ -86,7 +86,7 @@ def collect_flow_steps(model, sample, num_samples, is_inverse=False):
             
     return states, labels
 
-def plot_and_save(states, labels, save_path, max_panels=24):
+def plot_and_save(states, labels, save_path, max_panels=300):
     """수집된 상태들을 서브플롯으로 시각화"""
     num_steps = len(states)
     indices = np.linspace(0, num_steps - 1, min(num_steps, max_panels), dtype=int)

@@ -10,18 +10,18 @@ from rlnf_rrt.data_pipeline.custom_dataset import RLNFDataset
 
 
 
-def visualize_samples(model, dataset, device, num_samples=1000):
+def visualize_samples(model, dataloader, device, num_samples=1000):
     model.eval()
     
     i = 0
     loss_mean = []
     scale_factor = 3.0 # 데이터셋 설정과 동일해야 함
     
-    for batch in tqdm(dataset):
+    for batch in tqdm(dataloader):
         with torch.no_grad():
-            map_img = batch['map'].unsqueeze(0).to(device)
-            start = batch['start'].unsqueeze(0).to(device)
-            goal = batch['goal'].unsqueeze(0).to(device)
+            map_img = batch['map'].to(device)
+            start = batch['start'].to(device)
+            goal = batch['goal'].to(device)
             
             # Forward: 가우시안 노이즈로부터 -3 ~ 3 범위 샘플 생성
             q_samples, ll = model.forward(map_img, start, goal, num_samples=num_samples)
@@ -50,7 +50,7 @@ def visualize_samples(model, dataset, device, num_samples=1000):
         
         # 샘플 및 GT 시각화
         plt.scatter(q_samples_np[:, 0], q_samples_np[:, 1], 
-                    color='blue', s=2, alpha=0.1, label='Generated Samples')
+                    color='blue', s=2, label='Generated Samples')
         plt.scatter(gt_np[:, 0], gt_np[:, 1], color='orange', s=5, alpha=0.5, label='Ground Truth')
         
         # Start/Goal 시각화
@@ -61,44 +61,17 @@ def visualize_samples(model, dataset, device, num_samples=1000):
         plt.legend(loc='upper right')
         
         # 결과 저장 폴더 확인
-        save_dir = "../result/visualization"
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
+        save_dir = os.path.join(os.path.dirname(__file__), "..", "result", "visualization")
+        os.makedirs(save_dir, exist_ok=True)
             
         plt.savefig(f"{save_dir}/res_{i}.png")
         plt.close()
         i += 1
-        if i >= 10: break # 너무 많으면 여기서 끊으세요.
 
     print(f"Average Log-Likelihood: {np.mean(loss_mean):.5f}")
 
 if __name__ == "__main__":
-    masks = [
-        [1.0, 0.0],
-        [0.0, 1.0],
-        [1.0, 0.0],         
-        [0.0, 1.0],
-        [1.0, 0.0],
-        [0.0, 1.0],
-        [1.0, 0.0],
-        [0.0, 1.0],
-        [1.0, 0.0],         
-        [0.0, 1.0],
-        [1.0, 0.0],
-        [0.0, 1.0],
-        [1.0, 0.0],
-        [0.0, 1.0],
-        [1.0, 0.0],         
-        [0.0, 1.0],
-        [1.0, 0.0],
-        [0.0, 1.0],
-        [1.0, 0.0],
-        [0.0, 1.0],
-        [1.0, 0.0],         
-        [0.0, 1.0],
-        [1.0, 0.0],
-        [0.0, 1.0]
-    ]
+    masks = [[1.0, 0.0], [0.0, 1.0]] * 32
 
     device = get_device()
     print(f"Using device: {device}")
@@ -107,11 +80,11 @@ if __name__ == "__main__":
     num_epochs = 10
 
     model = CustomPlannerFlows(masks, hidden_dim, env_latent_dim).to(device)
-    state = torch.load("../result/models/planner_flows_v5_ep60.pth")
+    state = torch.load("../result/models/planner_flows_v1_ep1090.pth")
     model.load_state_dict(state)
-    dataset = RLNFDataset(split="train")
-    dataloader = torch.utils.data.DataLoader(dataset, shuffle=False)
+    dataset = RLNFDataset(split="test")
+    dataloader = torch.utils.data.DataLoader(dataset, shuffle=False, batch_size=1)
 
-    visualize_samples(model, dataset, device, num_samples=1000)
+    visualize_samples(model, dataloader, device, num_samples=1000)
 
     
