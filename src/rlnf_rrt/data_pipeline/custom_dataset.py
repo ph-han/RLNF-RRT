@@ -106,6 +106,26 @@ class RLNFDataset(Dataset):
                 out[i] = p  # 실패 시 원본 유지
         return out
 
+    def _create_gaussian_heatmap(self, center_x: float, center_y: float, sigma: float = 4.0) -> np.ndarray:
+        """
+        Create a 2D Gaussian heatmap centered at (center_x, center_y) in pixel coordinates.
+        
+        Args:
+            center_x: X coordinate in pixels (0 to W-1)
+            center_y: Y coordinate in pixels (0 to H-1)
+            sigma: Standard deviation of the Gaussian in pixels
+            
+        Returns:
+            Heatmap of shape (H, W) with values in [0, 1]
+        """
+        x = np.arange(0, self.W, dtype=np.float32)
+        y = np.arange(0, self.H, dtype=np.float32)
+        xx, yy = np.meshgrid(x, y)
+        
+        # Compute Gaussian
+        heatmap = np.exp(-((xx - center_x)**2 + (yy - center_y)**2) / (2 * sigma**2))
+        return heatmap.astype(np.float32)
+
     def __len__(self):
         return len(self.map_list)
 
@@ -117,10 +137,22 @@ class RLNFDataset(Dataset):
         # Map 로드
         map_img = Image.open(map_path).convert("L")
         map_np = np.array(map_img, dtype=np.float32) / 255.0
-        map_tensor = torch.from_numpy(map_np).unsqueeze(0).float()
 
-        # Start/Goal 로드 및 스케일 변환
-        start_goal01 = np.load(start_goal_path).astype(np.float32) / self.norm
+        # Start/Goal 로드 (pixel coordinates)
+        start_goal_px = np.load(start_goal_path).astype(np.float32)  # shape: (2, 2) - [[start_x, start_y], [goal_x, goal_y]]
+        start_px = start_goal_px[0]
+        goal_px = start_goal_px[1]
+        
+        # Create Gaussian heatmaps for start and goal (in pixel coordinates)
+        start_heatmap = self._create_gaussian_heatmap(start_px[0], start_px[1], sigma=4.0)
+        goal_heatmap = self._create_gaussian_heatmap(goal_px[0], goal_px[1], sigma=4.0)
+        
+        # Stack into 3-channel tensor: (occupancy, start_heatmap, goal_heatmap)
+        map_3ch = np.stack([map_np, start_heatmap, goal_heatmap], axis=0)
+        map_tensor = torch.from_numpy(map_3ch).float()
+
+        # Start/Goal 스케일 변환 for conditioning vector
+        start_goal01 = start_goal_px / self.norm
         start_goal_scaled = self._to_custom_range(start_goal01)
         start = torch.from_numpy(start_goal_scaled[0]).float()
         goal  = torch.from_numpy(start_goal_scaled[1]).float()
@@ -160,3 +192,4 @@ class RLNFDataset(Dataset):
             "goal": goal, 
             "gt": gt_points
         }
+

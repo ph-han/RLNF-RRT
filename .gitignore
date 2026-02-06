@@ -17,3 +17,7 @@ result
 
 # logfile
 *.log
+
+.vscode
+*.png
+check*.py

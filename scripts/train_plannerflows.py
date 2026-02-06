@@ -1,7 +1,7 @@
 import os
 import torch
 import matplotlib.pyplot as plt
-from torch.optim import Adam
+from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from rlnf_rrt.training.train import train_cnf
@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     model = CustomPlannerFlows(masks, hidden_dim, env_latent_dim).to(device)
 
-    optimizer = Adam(model.parameters(), lr=1e-4)
+    optimizer = AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4, betas=(0.9, 0.999))
     # scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
 
     train_dataset = RLNFDataset(split="train")
