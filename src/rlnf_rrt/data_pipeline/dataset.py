@@ -9,6 +9,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 import torch
 from torch.utils.data import Dataset
 
+from rlnf_rrt.utils.utils import load_cspace_img_to_np
+
 class RLNFDataset(Dataset):
     def __init__(self, split:str="train"):
         assert split in ["train", "valid", "test"]
@@ -40,9 +42,8 @@ class RLNFDataset(Dataset):
         start_goal_path = self.start_goal_list[idx]
         gt_path = self.gt_list[idx]
 
-        # load map data (H, W) 255: free, 0: obstacle
-        map_data = Image.open(map_path).convert("L")
-        map_data = np.array(map_data)
+        # load map data (H, W) [255: free, 0: obstacle]
+        map_data = load_cspace_img_to_np(map_path)
         
         # load start and goal data [(x, y), (x, y)]
         start_goal_data = np.load(start_goal_path)
