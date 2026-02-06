@@ -40,6 +40,7 @@ class RRTStar:
         return new_node
     
     def is_collision(self, node:Node) -> bool:
+        # WIG: when i finish implementation, i will add collision checking
         if not (0 <= node.x < self.cspace.shape[0] and 0 <= node.y < self.cspace.shape[1]):
             return True
 
@@ -51,7 +52,7 @@ class RRTStar:
                 self.min_near_radius)
         
         node_index_list:list[int] = []
-        for i, node in enumerate(self.paths):
+        for i, node in enumerate(self.graph):
             if np.hypot(node.x - node.x, node.y - node.y) <= r:
                 node_index_list.append(i)
         return node_index_list
@@ -131,7 +132,7 @@ class RRTStar:
 
             dist_to_goal:float = np.hypot(new.x - goal.x, new.y - goal.y)
             if dist_to_goal <= self.robot_radius:
-                self.final_node = Node((self.goal_x, self.goal_y), parent=new, cost=new.cost + dist_to_goal)
+                self.final_node = Node(self.goal_x, self.goal_y, parent=new, cost=new.cost + dist_to_goal)
                 if not new.is_same(self.final_node):
                     new.children.append(self.final_node)
                     self.graph.append(self.final_node)

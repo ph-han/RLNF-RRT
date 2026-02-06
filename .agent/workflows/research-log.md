@@ -43,46 +43,120 @@ git diff HEAD~1  # 전체 diff 확인 (너무 길면 주요 파일만 선택)
 // turbo
 ```bash
 # Loss curve 이미지와 모델 파일 확인
-ls -la result/images/ | tail -5
+ls -la result/visualization/loss | tail -5
 ls -la result/models/ | tail -5
 ```
 
 ---
 
-## Step 3: 테스트 및 시각화 실행 (선택)
+## Step 3: 테스트 및 시각화 실행 (로컬)
 
-서버에서 테스트 스크립트 실행:
+> [!NOTE]
+> 학습은 서버에서, 테스트/시각화는 로컬에서 실행합니다.
 
-```bash
-sshpass -p 'phan' ssh phan@166.104.224.180 << 'EOF'
-cd ~/RLNF-RRT/scripts
-source ../.venv/bin/activate
-CUDA_VISIBLE_DEVICES=0 python test_plannerflows.py
-# 또는
-# CUDA_VISIBLE_DEVICES=0 python visualize_flow_states.py --ckpt ../result/models/latest.pth
-EOF
-```
+### 3.1 서버에서 모델 파일 가져오기
 
-결과 이미지를 로컬로 가져오기:
 // turbo
 ```bash
-rsync -avP -e "sshpass -p 'phan' ssh" phan@166.104.224.180:~/RLNF-RRT/result/visualization/ /home/phan/Desktop/research/RLNF-RRT/result/visualization/
+# 서버에서 최신 모델 파일 다운로드
+rsync -avP -e "sshpass -p 'phan' ssh" phan@166.104.224.180:~/RLNF-RRT/result/models/ /home/phan/Desktop/research/RLNF-RRT/result/models/
+```
+
+### 3.2 로컬에서 테스트 실행
+
+// turbo
+```bash
+cd /home/phan/Desktop/research/RLNF-RRT
+source .venv/bin/activate
+python scripts/test_plannerflows.py
+# 또는
+# python scripts/visualize_flow_states.py --ckpt result/models/latest.pth
 ```
 
 ---
 
 ## Step 4: 결과 이미지 랜덤 샘플링 및 분석
 
+### 4.1 Loss Curve 분석
 // turbo
 ```bash
-# result/visualization/ 폴더에서 랜덤 10개 선택
-ls result/visualization/*.png | shuf | head -10
+# result/visualization/loss/ 폴더에서 랜덤 10개 선택
+ls result/visualization/loss/*.png 2>/dev/null | shuf | head -10
 ```
 
-선택된 이미지들을 분석:
+분석 포인트:
+- Loss가 수렴하고 있는지
+- 학습 안정성 (급격한 변동 없는지)
+
+### 4.2 Sampling 결과 분석
+// turbo
+```bash
+# result/visualization/sampling/ 폴더에서 랜덤 10개 선택
+ls result/visualization/sampling/*.png 2>/dev/null | shuf | head -10
+```
+
+분석 포인트:
 - 샘플 분포가 적절한지
 - Start/Goal 위치 표시가 올바른지
+
+### 4.3 Each Step 분석
+// turbo
+```bash
+# result/visualization/each_step/ 폴더에서 랜덤 10개 선택
+ls result/visualization/each_step/*.png 2>/dev/null | shuf | head -10
+```
+
+분석 포인트:
+- 단계별 flow 변화가 적절한지
 - Ground Truth와의 비교
+
+---
+
+## Step 4.5: Compare with Paper (논문 비교 분석)
+
+`reference/` 폴더의 논문을 기반으로 현재 구현과 비교 분석합니다.
+
+### 확인 사항
+
+// turbo
+```bash
+# reference 폴더 내 논문 목록 확인
+ls -la reference/*.pdf 2>/dev/null || echo "No PDF files in reference/"
+```
+
+### 분석 포인트
+
+다음 관점에서 현재 코드가 논문과 일치하는지 검토:
+
+1. **Methodology 일치성**
+   - 논문의 핵심 알고리즘이 제대로 구현되었는가?
+   - 수식이나 pseudo-code와 코드 로직이 일치하는가?
+
+2. **Architecture 적합성**
+   - 모델 구조가 논문에서 제안한 것과 동일한가?
+   - 레이어 구성, 차원 설정 등이 논문과 맞는가?
+
+3. **실험 설정**
+   - Hyperparameter (learning rate, batch size 등)가 논문과 유사한가?
+   - 데이터셋 구성이 논문의 실험 환경과 비슷한가?
+
+4. **Gap 분석**
+   - 논문에 있지만 아직 구현되지 않은 부분은?
+   - 논문과 다르게 구현한 부분이 있다면 그 이유는?
+
+### Notion 기록 포맷 (추가 섹션)
+
+```
+## 5. 논문 비교 (Compare with Paper)
+- **참조 논문**: [논문 제목]
+- **일치하는 부분**: [내용]
+- **차이점/Gap**: [내용]
+- **다음 구현 목표**: [내용]
+```
+
+> [!TIP]
+> 자세한 논문 비교 분석은 `/paper-review` workflow를 사용하세요.
+> 분석 결과는 `reference/REVIEW_NOTES.md`에 저장됩니다.
 
 ---
 
@@ -90,7 +164,7 @@ ls result/visualization/*.png | shuf | head -10
 
 ### 5.2 Notion 기록 구조 (한글)
 
-다음 4가지 섹션으로 구성하여 기록합니다:
+다음 **5가지** 섹션으로 구성하여 기록합니다:
 
 1. **핵심 변화** (Key Changes)
    - 무엇이 바뀌었는지 한 문장으로 요약
@@ -108,6 +182,10 @@ ls result/visualization/*.png | shuf | head -10
    - 이번 실험을 바탕으로 제안할 점
    - 예: "파이프라인이 검증되었으니 실제 학습(Epoch 500) 시작 권장"
 
+5. **논문 비교** (Compare with Paper) 🆕
+   - 참조 논문과 현재 구현의 일치도 분석
+   - Gap 분석 및 다음 구현 목표
+
 ```
 ## 1. 핵심 변화
 [내용]
@@ -123,6 +201,12 @@ ls result/visualization/*.png | shuf | head -10
 
 ## 4. 다음으로 해보면 좋을 거 추천
 [내용]
+
+## 5. 논문 비교 (Compare with Paper)
+- **참조 논문**: [논문 제목]
+- **일치하는 부분**: [현재 잘 구현된 내용]
+- **차이점/Gap**: [아직 구현되지 않은 부분]
+- **다음 구현 목표**: [우선순위가 높은 구현 항목]
 ```
 
 ---

@@ -23,3 +23,6 @@ result
 check*.py
 
 .old
+
+# Reference papers (논문 PDF - GitHub 제외)
+reference/

@@ -2,10 +2,12 @@ from tqdm import tqdm
 import pandas as pd
 import numpy as np
 from PIL import Image
-from torch.utils.data import Dataset
 
 from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+import torch
+from torch.utils.data import Dataset
 
 class RLNFDataset(Dataset):
     def __init__(self, split:str="train"):
