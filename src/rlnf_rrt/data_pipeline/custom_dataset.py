@@ -33,7 +33,7 @@ class RLNFDataset(Dataset):
         self.gt_list: list[str] = []
 
         for _, row in tqdm(self.meta_data.iterrows(), total=len(self.meta_data), desc=f"Loading {split} metadata"):
-            if row["clearance"] in [1, 2] and row["step_size"] in [1, 2, 4, 6]:
+            if row["clearance"] in [1] and row["step_size"] in [1]:
                 self.map_list.append(f"{dataset_path}/map/{row['map_file']}")
                 self.start_goal_list.append(f"{dataset_path}/start_goal/{row['start_goal_file']}")
                 self.gt_list.append(f"{dataset_path}/gt_path/{row['gt_path_file']}")
