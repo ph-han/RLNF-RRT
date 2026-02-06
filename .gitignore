@@ -21,3 +21,5 @@ result
 .vscode
 *.png
 check*.py
+
+.old
