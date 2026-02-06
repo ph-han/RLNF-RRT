@@ -34,7 +34,7 @@ if __name__ == "__main__":
     device = get_device()
     hidden_dim = 128
     env_latent_dim = 256
-    num_epochs = 1500
+    num_epochs = 10
     batch_size=128
     num_workers=6
 
