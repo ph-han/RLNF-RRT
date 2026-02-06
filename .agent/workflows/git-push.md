@@ -60,8 +60,22 @@ Conventional Commits 형식으로 커밋 메시지 생성:
 
 사용자에게 생성된 커밋 메시지를 보여주고 확인 후:
 
+1. **이미 스테이징된 파일이 있는지 확인합니다:**
+   ```bash
+   git diff --staged --name-only
+   ```
+2. **상황별 처리:**
+   - **Case A: 스테이징된 파일이 있고, 스테이징 안 된 수정사항도 있는 경우**
+     - 사용자에게 묻습니다: "스테이징되지 않은 변경사항도 포함할까요? (Y/n)"
+     - Yes: `git add .` 실행 후 커밋
+     - No: 현재 스테이징된 내용만 커밋
+   - **Case B: 스테이징된 파일이 없는 경우**
+     - `git add .` 실행 후 커밋
+
 ```bash
-git add .
+# 필요한 경우
+git add . 
+
 git commit -m "<generated commit message>"
 ```
 
