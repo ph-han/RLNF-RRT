@@ -45,7 +45,6 @@ class RLNFDataset(Dataset):
 
         # load map data (H, W) [255: free, 0: obstacle]
         map_data = load_cspace_img_to_np(map_path)
-        map_data = np.flipud(map_data)  # Flip vertically to match Cartesian coordinates (y=0 at bottom)
         
         # load start and goal data [(x, y), (x, y)]
         start_goal_data = np.load(start_goal_path)

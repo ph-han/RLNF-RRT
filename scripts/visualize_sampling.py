@@ -101,7 +101,7 @@ def visualize_sample_density(model, dataset, device, num_samples=1000, save_path
     
     # Left: Scatter plot
     ax = axes[0]
-    ax.imshow(map_np, cmap='gray', origin='lower', extent=[0, 1, 0, 1], alpha=0.5)
+    ax.imshow(map_np, cmap='gray_r', origin='upper', extent=[0, 1, 0, 1], alpha=0.5)
     ax.scatter(samples[:, 0], samples[:, 1], c='blue', s=10, alpha=0.5, label=f'Samples (n={num_samples})', zorder=3)
     ax.scatter(gt_path[:, 0], gt_path[:, 1], c='green', s=10, alpha=0.9, label='GT Path', zorder=5)
     ax.add_patch(Circle(start_np, 0.02, color='red', zorder=10, label='Start'))
@@ -151,13 +151,27 @@ def main(args):
     print(f"Loading checkpoint from: {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     
-    # Create model
+    # Try to load config from checkpoint
+    config = checkpoint.get('config', None)
+    if config:
+        print("Found config in checkpoint. Overriding model parameters.")
+        num_blocks = getattr(config, 'num_blocks', args.num_blocks)
+        position_embed_dim = getattr(config, 'position_embed_dim', 128)
+        cond_dim = getattr(config, 'cond_dim', args.cond_dim)
+        map_embed_dim = getattr(config, 'map_embed_dim', 256)
+    else:
+        num_blocks = args.num_blocks
+        position_embed_dim = 128
+        cond_dim = args.cond_dim
+        map_embed_dim = 256
+
     model = ConditionalFlowPlanner(
-        num_blocks=args.num_blocks,
+        num_blocks=num_blocks,
         sg_dim=2,
-        position_embed_dim=128,
-        map_embed_dim=256,
-        cond_dim=args.cond_dim,
+        position_embed_dim=position_embed_dim,
+        map_embed_dim=map_embed_dim,
+        cond_dim=cond_dim,
+        hidden_dim=128
     ).to(device)
     
     model.load_state_dict(checkpoint["model_state_dict"])
