@@ -3,17 +3,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 
+import torch
+import torch.nn as nn
+import torchvision.models as models
+
 class ResNetMapEncoder(nn.Module):
     def __init__(self, out_dim=256):
         super().__init__()
-        # Use ResNet18 (pretrained)
         resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        
-        # Modify first layer for 1-channel input (Grayscale)
-        # Original: Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+
+        # 1-channel conv1
         self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.conv1.weight.data = resnet.conv1.weight.data.mean(dim=1, keepdim=True)
-        
+        with torch.no_grad():
+            self.conv1.weight.copy_(resnet.conv1.weight.mean(dim=1, keepdim=True))
+
         self.bn1 = resnet.bn1
         self.relu = resnet.relu
         self.maxpool = resnet.maxpool
@@ -22,15 +25,13 @@ class ResNetMapEncoder(nn.Module):
         self.layer2 = resnet.layer2
         self.layer3 = resnet.layer3
         self.layer4 = resnet.layer4
-        
-        # Remove average pooling and fc layer
-        # Output of layer4 is (B, 512, 7, 7) for 224x224 input
-        self.flatten_dim = 512 * 7 * 7 
-        
-        self.proj = nn.Linear(self.flatten_dim, out_dim)
+
+        # ✅ GAP instead of flatten(7*7)
+        self.pool = nn.AdaptiveAvgPool2d(1)  # -> (B,512,1,1)
+        self.proj = nn.Linear(512, out_dim)  # -> (B,out_dim)
 
     def forward(self, x):
-        # x: (B, 1, 224, 224)
+        # x: (B,1,224,224)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -39,10 +40,12 @@ class ResNetMapEncoder(nn.Module):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
-        x = self.layer4(x) # (B, 512, 7, 7)
-        
-        x = x.flatten(1)   # (B, 25088)
-        return self.proj(x)
+        x = self.layer4(x)            # (B,512,7,7)
+
+        x = self.pool(x).flatten(1)   # (B,512)
+        x = self.proj(x)              # (B,out_dim)
+        return x
+
 
 class ConditionEncoder(nn.Module):
     def __init__(self, sg_dim:int=2, position_embed_dim:int=128, map_embed_dim:int=256, cond_dim:int=128):
