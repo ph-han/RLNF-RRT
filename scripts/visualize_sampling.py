@@ -53,7 +53,7 @@ def visualize_sample_grid(model, dataset, device, num_samples=500, num_examples=
         map_np = map_img[0, 0].cpu().numpy()
         
         # Plot
-        ax.imshow(map_np, cmap='gray', origin='lower', extent=[0, 1, 0, 1], alpha=0.6)
+        im = ax.imshow(map_np, cmap='hot', extent=[0, 1, 0, 1], alpha=0.8)
         ax.scatter(gt_path[:, 0], gt_path[:, 1], c='green', s=8, alpha=0.5, label='GT Path', zorder=5)
         ax.scatter(samples[:, 0], samples[:, 1], c='blue', s=8, alpha=0.4, label=f'Samples (n={num_samples})', zorder=3)
         ax.add_patch(Circle(start_np, 0.02, color='red', zorder=10, label='Start'))
@@ -101,7 +101,7 @@ def visualize_sample_density(model, dataset, device, num_samples=1000, save_path
     
     # Left: Scatter plot
     ax = axes[0]
-    ax.imshow(map_np, cmap='gray_r', origin='upper', extent=[0, 1, 0, 1], alpha=0.5)
+    ax.imshow(map_np, cmap='gray_r', extent=[0, 1, 0, 1], alpha=0.5)
     ax.scatter(samples[:, 0], samples[:, 1], c='blue', s=10, alpha=0.5, label=f'Samples (n={num_samples})', zorder=3)
     ax.scatter(gt_path[:, 0], gt_path[:, 1], c='green', s=10, alpha=0.9, label='GT Path', zorder=5)
     ax.add_patch(Circle(start_np, 0.02, color='red', zorder=10, label='Start'))

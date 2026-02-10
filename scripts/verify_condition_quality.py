@@ -5,6 +5,7 @@ import numpy as np
 from rlnf_rrt.data_pipeline.dataset import RLNFDataset
 from rlnf_rrt.models.condition_encoder import ConditionEncoder
 from rlnf_rrt.models.conditional_flow_planner import ConditionalFlowPlanner
+from rlnf_rrt.training.config import TrainConfig
 
 def verify_condition_sensitivity():
     # 1. Load Dataset
@@ -21,13 +22,14 @@ def verify_condition_sensitivity():
     # Check args in train_flow.py used for v3:
     # default args: num_blocks=4, map_embed_dim=256, cond_dim=128, hidden_dim=128
     full_model = ConditionalFlowPlanner(
-        num_blocks=4, 
-        map_embed_dim=256,
-        cond_dim=128,
-        hidden_dim=128
+        num_blocks=TrainConfig.num_blocks,
+        map_embed_dim=TrainConfig.map_embed_dim,
+        position_embed_dim=TrainConfig.position_embed_dim,
+        cond_dim=TrainConfig.cond_dim,
+        hidden_dim=TrainConfig.hidden_dim
     )
     
-    checkpoint_path = "result/models/v5_best_model.pt"
+    checkpoint_path = "result/models/v6_2_best_model.pt"
     print(f"Loading checkpoint from {checkpoint_path}...")
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     full_model.load_state_dict(checkpoint['model_state_dict'])
