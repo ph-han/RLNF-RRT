@@ -12,9 +12,10 @@ from torch.utils.data import Dataset
 from rlnf_rrt.utils.utils import load_cspace_img_to_np
 
 class RLNFDataset(Dataset):
-    def __init__(self, split:str="train"):
+    def __init__(self, split:str="train", noise_std:float=0.0):
         assert split in ["train", "valid", "test"]
         self.split:str = split
+        self.noise_std:float = noise_std
         self.data_path:str = f"{PROJECT_ROOT}/data/{split}"
         self.meta_data:pd.DataFrame = pd.read_csv(f"{self.data_path}/meta.csv")
         
@@ -64,7 +65,22 @@ class RLNFDataset(Dataset):
         gt_path_data = gt_path_data / map_data.shape[0]
 
         # gt path sampling (512 points)
-        random_gt_path_data = gt_path_data[np.random.choice(len(gt_path_data), 512, replace=False)]
+        if len(gt_path_data) >= 512:
+            # Case 1: Path is long enough. Use Linspace for uniform coverage.
+            # This preserves order and ensures the whole path is represented.
+            indices = np.linspace(0, len(gt_path_data) - 1, 512).astype(int)
+            random_gt_path_data = gt_path_data[indices]
+        else:
+            # Case 2: Path is too short. Use Random Choice with Replacement.
+            # This prevents validation errors by allowing duplicates.
+            indices = np.random.choice(len(gt_path_data), 512, replace=True)
+            random_gt_path_data = gt_path_data[indices]
+
+        # add noise to gt path
+        if self.noise_std > 0:
+            noise = np.random.normal(0, self.noise_std, random_gt_path_data.shape)
+            random_gt_path_data = random_gt_path_data + noise
+
         return {
             "map": torch.from_numpy(map_data).float().unsqueeze(0),
             "start": torch.from_numpy(start_data).float(),

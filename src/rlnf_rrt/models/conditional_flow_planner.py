@@ -5,13 +5,13 @@ from rlnf_rrt.models.condition_encoder import ConditionEncoder
 from rlnf_rrt.models.coupling_block import CouplingBlock
 
 class ConditionalFlowPlanner(nn.Module):
-    def __init__(self, num_blocks:int=4, sg_dim:int=2, position_embed_dim:int=128, map_embed_dim:int=256, cond_dim:int=128):
+    def __init__(self, num_blocks:int=4, sg_dim:int=2, position_embed_dim:int=128, map_embed_dim:int=256, cond_dim:int=128, hidden_dim:int=128, s_max:float=2.0):
         super().__init__()
         self.sg_dim = sg_dim
         self.condition_encoder:ConditionEncoder = ConditionEncoder(sg_dim, position_embed_dim, map_embed_dim, cond_dim)
 
         self.flow_model:nn.ModuleList = nn.ModuleList([
-            CouplingBlock(cond_dim=cond_dim) for _ in range(num_blocks)
+            CouplingBlock(cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max) for _ in range(num_blocks)
         ])
 
     def forward(self, gt_trajs:torch.Tensor, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor):
@@ -36,3 +36,54 @@ class ConditionalFlowPlanner(nn.Module):
             z = block.inverse(z, cond)
 
         return z
+    
+    def sample_with_intermediates(self, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor, num_samples:int=1000):
+        """Sample from the flow model and return intermediate transformations.
+        
+        Returns:
+            intermediates: List of (num_blocks + 1) tensors, each of shape (batch_size, num_samples, 2)
+                          [z0, z1, z2, ..., x_final]
+        """
+        cond = self.condition_encoder(map_img, start, goal)
+        cond = cond.unsqueeze(1).expand(-1, num_samples, -1)
+
+        batch_size = map_img.shape[0]
+        z = torch.randn(batch_size, num_samples, self.sg_dim, device=map_img.device)
+        
+        # Store intermediates
+        intermediates = [z.clone()]
+        
+        # Apply inverse transforms
+        for block in reversed(self.flow_model):
+            z = block.inverse(z, cond)
+            intermediates.append(z.clone())
+        
+        return intermediates
+
+    def forward_with_intermediates(self, gt_trajs:torch.Tensor, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor):
+        """Pass input through the flow model and return intermediate transformations.
+        
+        Args:
+            gt_trajs: Input trajectories (batch_size, seq_len, 2)
+            map_img: Map image (batch_size, 1, 64, 64)
+            start: Start position (batch_size, 2)
+            goal: Goal position (batch_size, 2)
+            
+        Returns:
+            intermediates: List of (num_blocks + 1) tensors, each of shape (batch_size, seq_len, 2)
+                          [x_data, x1, x2, ..., x_final(z)]
+        """
+        cond = self.condition_encoder(map_img, start, goal)
+        cond = cond.unsqueeze(1).expand(-1, gt_trajs.shape[1], -1)  # (B, T, cond_dim)
+
+        x = gt_trajs
+        
+        # Store intermediates
+        intermediates = [x.clone()]
+        
+        # Apply forward transforms
+        for block in self.flow_model:
+            x, _ = block(x, cond)  # We don't need log_det for visualization
+            intermediates.append(x.clone())
+            
+        return intermediates

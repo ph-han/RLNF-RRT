@@ -42,9 +42,13 @@ git diff HEAD~1  # 전체 diff 확인 (너무 길면 주요 파일만 선택)
 
 // turbo
 ```bash
-# Loss curve 이미지와 모델 파일 확인
-ls -la result/visualization/loss | tail -5
-ls -la result/models/ | tail -5
+# Checkpoint 확인
+ls -lh result/checkpoints/ | tail -5
+
+# Visualization 결과 확인
+ls -la result/visualization/loss/*.png 2>/dev/null | tail -3
+ls -la result/visualization/sampling/*.png 2>/dev/null | tail -3
+ls -la result/visualization/each_step/*.png 2>/dev/null | tail -3
 ```
 
 ---
@@ -59,7 +63,7 @@ ls -la result/models/ | tail -5
 // turbo
 ```bash
 # 서버에서 최신 모델 파일 다운로드
-rsync -avP -e "sshpass -p 'phan' ssh" phan@166.104.224.180:~/RLNF-RRT/result/models/ /home/phan/Desktop/research/RLNF-RRT/result/models/
+rsync -avP -e "sshpass -p 'phan' ssh" phan@166.104.224.180:~/RLNF-RRT/result/checkpoints/ /home/phan/Desktop/research/RLNF-RRT/result/checkpoints/
 ```
 
 ### 3.2 로컬에서 테스트 실행
@@ -67,10 +71,14 @@ rsync -avP -e "sshpass -p 'phan' ssh" phan@166.104.224.180:~/RLNF-RRT/result/mod
 // turbo
 ```bash
 cd /home/phan/Desktop/research/RLNF-RRT
-source .venv/bin/activate
-python scripts/test_plannerflows.py
-# 또는
-# python scripts/visualize_flow_states.py --ckpt result/models/latest.pth
+# Loss curve 생성
+uv run python scripts/visualize_loss.py
+
+# Sampling 시각화
+uv run python scripts/visualize_sampling.py --num_samples 512
+
+# Step-by-step 시각화
+uv run python scripts/visualize_each_step.py --num_examples 3
 ```
 
 ---
@@ -80,34 +88,49 @@ python scripts/test_plannerflows.py
 ### 4.1 Loss Curve 분석
 // turbo
 ```bash
-# result/visualization/loss/ 폴더에서 랜덤 10개 선택
-ls result/visualization/loss/*.png 2>/dev/null | shuf | head -10
+# Loss curve 시각화 스크립트 실행
+cd /home/phan/Desktop/research/RLNF-RRT
+uv run python scripts/visualize_loss.py
+
+# 생성된 loss curve 확인
+ls result/visualization/loss/*.png | tail -5
 ```
 
 분석 포인트:
 - Loss가 수렴하고 있는지
 - 학습 안정성 (급격한 변동 없는지)
+- Best validation loss 지점
 
 ### 4.2 Sampling 결과 분석
 // turbo
 ```bash
-# result/visualization/sampling/ 폴더에서 랜덤 10개 선택
-ls result/visualization/sampling/*.png 2>/dev/null | shuf | head -10
+# Sampling 시각화 스크립트 실행
+cd /home/phan/Desktop/research/RLNF-RRT
+uv run python scripts/visualize_sampling.py --num_samples 512
+
+# 생성된 sampling 결과 확인
+ls result/visualization/sampling/*.png | tail -5
 ```
 
 분석 포인트:
-- 샘플 분포가 적절한지
+- 샘플 분포가 ground truth와 유사한지
 - Start/Goal 위치 표시가 올바른지
+- 장애물 회피가 잘 되는지
 
 ### 4.3 Each Step 분석
 // turbo
 ```bash
-# result/visualization/each_step/ 폴더에서 랜덤 10개 선택
-ls result/visualization/each_step/*.png 2>/dev/null | shuf | head -10
+# Step-by-step 변환 시각화 실행
+cd /home/phan/Desktop/research/RLNF-RRT
+uv run python scripts/visualize_each_step.py --num_examples 3 --num_samples 300
+
+# 생성된 each_step 결과 확인
+ls result/visualization/each_step/*.png | tail -5
 ```
 
 분석 포인트:
-- 단계별 flow 변화가 적절한지
+- 단계별 flow 변화가 부드러운지 (z0 → z1 → ... → x)
+- Base distribution에서 최종 경로로의 변환 과정
 - Ground Truth와의 비교
 
 ---

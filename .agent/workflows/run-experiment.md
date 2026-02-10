@@ -133,11 +133,38 @@ rsync -avP -e "sshpass -p 'phan' ssh -p 22" phan@166.104.224.180:~/RLNF-RRT/trai
 
 ---
 
-## Step 6: Notion에 실험 결과 기록
+## Step 6: 시각화 생성 (로컬)
+
+학습 완료 후 결과를 시각화:
+
+// turbo
+```bash
+cd /home/phan/Desktop/research/RLNF-RRT
+
+# Loss curve 생성
+uv run python scripts/visualize_loss.py
+
+# Sampling 시각화
+uv run python scripts/visualize_sampling.py --num_samples 512
+
+# Step-by-step 변환 시각화
+uv run python scripts/visualize_each_step.py --num_examples 3
+```
+
+**생성되는 파일들**:
+- `result/visualization/loss/loss_curve_{timestamp}.png`
+- `result/visualization/sampling/samples_grid_{timestamp}.png`
+- `result/visualization/sampling/sample_density_{timestamp}.png`
+- `result/visualization/each_step/flow_steps_{idx}_{timestamp}.png`
+
+---
+
+## Step 7: Notion에 실험 결과 기록
 
 `/research-log` 워크플로우를 호출하여:
 - 실험 설정 (하이퍼파라미터: epochs, batch_size, lr, num_blocks, cond_dim)
 - 결과 요약 (최종 train/val loss)
+- 시각화 결과 분석
 - 다음 실험 방향 추천
 
 ---
@@ -159,7 +186,13 @@ AI: 실험을 시작합니다.
 AI: 결과를 가져옵니다.
 
 5️⃣ rsync 완료: best_model.pt (6.8 MB)
-6️⃣ 최종 결과:
+
+6️⃣ 시각화 생성 중...
+   ✅ Loss curve 저장됨
+   ✅ Sampling 시각화 저장됨
+   ✅ Step-by-step 시각화 저장됨
+
+7️⃣ 최종 결과:
    - Train Loss: 2.3456
    - Val Loss: 2.4567
    
@@ -178,8 +211,17 @@ Notion에 기록할까요?
 - **체크포인트**: `result/checkpoints/best_model.pt`
 - **로그**: `train.log` (서버) 또는 stdout (로컬)
 - **백업**: `result/old/v{N}_{timestamp}/`
+- **시각화**: 
+  - `result/visualization/loss/` - Loss curves
+  - `result/visualization/sampling/` - Sample distributions
+  - `result/visualization/each_step/` - Step-by-step transformations
 
 ### 서버 환경
 - Host: `phan@166.104.224.180`
 - Remote Dir: `~/RLNF-RRT`
 - Dataset: 서버에 저장됨 (`data/train/`, `data/valid/`)
+
+### 시각화 스크립트
+- `scripts/visualize_loss.py` - Loss curve 생성
+- `scripts/visualize_sampling.py` - Sampling 분포 시각화
+- `scripts/visualize_each_step.py` - Flow 변환 단계별 시각화

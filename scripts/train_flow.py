@@ -90,8 +90,8 @@ def main(args):
     
     # Dataset
     print("Loading datasets...")
-    train_dataset = RLNFDataset(split="train")
-    val_dataset = RLNFDataset(split="valid")
+    train_dataset = RLNFDataset(split="train", noise_std=args.noise_std)
+    val_dataset = RLNFDataset(split="valid", noise_std=0.0)
     
     train_loader = DataLoader(
         train_dataset,
@@ -110,13 +110,18 @@ def main(args):
     
     print(f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}")
     
+    # experiment version
+    exp_version = args.version
+
     # Model
     model = ConditionalFlowPlanner(
         num_blocks=args.num_blocks,
         sg_dim=2,
         position_embed_dim=128,
-        map_embed_dim=256,
+        map_embed_dim=args.map_embed_dim,
         cond_dim=args.cond_dim,
+        hidden_dim=args.hidden_dim,
+        s_max=args.s_max,
     ).to(device)
     
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -132,8 +137,18 @@ def main(args):
     
     # Training loop
     best_val_loss = float("inf")
-    result_dir = PROJECT_ROOT / "result" / "checkpoints"
-    result_dir.mkdir(parents=True, exist_ok=True)
+    result_dir = PROJECT_ROOT / "result"
+    checkpoint_dir = result_dir / "checkpoints"
+    best_model_path = result_dir / "models"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    best_model_path.mkdir(parents=True, exist_ok=True)
+    
+    # Loss history for visualization
+    loss_history = {
+        "train_loss": [],
+        "val_loss": [],
+        "epochs": [],
+    }
     
     print(f"\nStarting training for {args.epochs} epochs...")
     print("=" * 60)
@@ -145,23 +160,42 @@ def main(args):
         # Validate
         val_loss = validate(model, val_loader, criterion, device)
         
+        # Update loss history
+        loss_history["train_loss"].append(train_loss)
+        loss_history["val_loss"].append(val_loss)
+        loss_history["epochs"].append(epoch + 1)
+        
         print(f"Epoch {epoch+1:3d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+
+        if (epoch + 1) % 10 == 0:
+            checkpoint = {
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "loss_history": loss_history,
+            }
+            torch.save(checkpoint, checkpoint_dir / f"{exp_version}_model_{epoch+1}.pt")
+            print(f"  ✅ Saved model ({exp_version} epoch: {epoch+1})")
         
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             checkpoint = {
-                "epoch": epoch,
+                "epoch": epoch + 1,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
+                "train_loss": train_loss,
                 "val_loss": val_loss,
+                "loss_history": loss_history,
             }
-            torch.save(checkpoint, result_dir / "best_model.pt")
+            torch.save(checkpoint, best_model_path / f"{exp_version}_best_model.pt")
             print(f"  ✅ Saved best model (val_loss: {val_loss:.4f})")
     
     print("=" * 60)
     print(f"Training complete! Best val loss: {best_val_loss:.4f}")
-    print(f"Model saved to: {result_dir / 'best_model.pt'}")
+    print(f"Model saved to: {best_model_path / f'{exp_version}_best_model.pt'}")
 
 
 if __name__ == "__main__":
@@ -172,14 +206,21 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-5, help="Weight decay")
+    parser.add_argument("--noise_std", type=float, default=0.05, help="Noise standard deviation for training data")
     
     # Model
     parser.add_argument("--num_blocks", type=int, default=4, help="Number of coupling blocks")
     parser.add_argument("--cond_dim", type=int, default=128, help="Condition dimension")
+    parser.add_argument("--hidden_dim", type=int, default=128, help="Hidden dimension in coupling block")
+    parser.add_argument("--map_embed_dim", type=int, default=256, help="Map embedding dimension")
+    parser.add_argument("--s_max", type=float, default=2.0, help="Max scaling factor")
     
     # System
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
     parser.add_argument("--num_workers", type=int, default=6, help="Number of workers")
+
+    # Version
+    parser.add_argument("--version", type=str, default="v1", help="Version of the model")
     
     args = parser.parse_args()
     main(args)
