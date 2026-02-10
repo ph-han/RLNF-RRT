@@ -65,25 +65,27 @@ class RLNFDataset(Dataset):
         gt_path_data = gt_path_data / map_data.shape[0]
 
         # gt path sampling (512 points)
+        is_train = (self.split == "train")
+
         if len(gt_path_data) >= 512:
-            # Case 1: Path is long enough. Use Linspace for uniform coverage.
-            # This preserves order and ensures the whole path is represented.
             indices = np.linspace(0, len(gt_path_data) - 1, 512).astype(int)
-            random_gt_path_data = gt_path_data[indices]
+            path_512 = gt_path_data[indices]
         else:
-            # Case 2: Path is too short. Use Random Choice with Replacement.
-            # This prevents validation errors by allowing duplicates.
-            indices = np.random.choice(len(gt_path_data), 512, replace=True)
-            random_gt_path_data = gt_path_data[indices]
+            if is_train:
+                indices = np.random.choice(len(gt_path_data), 512, replace=True)
+                path_512 = gt_path_data[indices]
+            else:
+                reps = int(np.ceil(512 / len(gt_path_data)))
+                path_512 = np.tile(gt_path_data, (reps, 1))[:512]
 
         # add noise to gt path
         if self.noise_std > 0:
-            noise = np.random.normal(0, self.noise_std, random_gt_path_data.shape)
-            random_gt_path_data = random_gt_path_data + noise
+            noise = np.random.normal(0, self.noise_std, path_512.shape)
+            path_512 = path_512 + noise
 
         return {
             "map": torch.from_numpy(map_data).float().unsqueeze(0),
             "start": torch.from_numpy(start_data).float(),
             "goal": torch.from_numpy(goal_data).float(),
-            "gt_path": torch.from_numpy(random_gt_path_data).float()
+            "gt_path": torch.from_numpy(path_512).float()
         }

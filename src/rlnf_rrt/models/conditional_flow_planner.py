@@ -15,27 +15,30 @@ class ConditionalFlowPlanner(nn.Module):
         ])
 
     def forward(self, gt_trajs:torch.Tensor, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor):
-        cond = self.condition_encoder(map_img, start, goal)
-        cond = cond.unsqueeze(1).expand(-1, gt_trajs.shape[1], -1)
+        # cond = self.condition_encoder(map_img, start, goal)
+        # cond = cond.unsqueeze(1).expand(-1, gt_trajs.shape[1], -1)
+
+        map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
+        sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
 
         x = gt_trajs
         log_det = torch.zeros(gt_trajs.shape[0], device=gt_trajs.device)
         for block in self.flow_model:
-            x, log_det_block = block(x, cond)
+            x, log_det_block = block(x, sg_feat_T, map_feat)
             log_det += log_det_block
 
             x = x[..., [1, 0]] # permutation
         return x, log_det
 
     def sample(self, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor, num_samples:int=1000):
-        cond = self.condition_encoder(map_img, start, goal)
-        cond = cond.unsqueeze(1).expand(-1, num_samples, -1)
+        map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
+        sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
 
         batch_size = map_img.shape[0]
         z = torch.randn(batch_size, num_samples, self.sg_dim, device=map_img.device)
         for block in reversed(self.flow_model):
             z = z[..., [1, 0]] # permutation
-            z = block.inverse(z, cond)
+            z = block.inverse(z, sg_feat_T, map_feat)
 
         return z
     
@@ -46,8 +49,8 @@ class ConditionalFlowPlanner(nn.Module):
             intermediates: List of (num_blocks + 1) tensors, each of shape (batch_size, num_samples, 2)
                           [z0, z1, z2, ..., x_final]
         """
-        cond = self.condition_encoder(map_img, start, goal)
-        cond = cond.unsqueeze(1).expand(-1, num_samples, -1)
+        map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
+        sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
 
         batch_size = map_img.shape[0]
         z = torch.randn(batch_size, num_samples, self.sg_dim, device=map_img.device)
@@ -58,7 +61,7 @@ class ConditionalFlowPlanner(nn.Module):
         # Apply inverse transforms
         for block in reversed(self.flow_model):
             z = z[..., [1, 0]] # permutation
-            z = block.inverse(z, cond)
+            z = block.inverse(z, sg_feat_T, map_feat)
             intermediates.append(z.clone())
         
         return intermediates
@@ -76,8 +79,9 @@ class ConditionalFlowPlanner(nn.Module):
             intermediates: List of (num_blocks + 1) tensors, each of shape (batch_size, seq_len, 2)
                           [x_data, x1, x2, ..., x_final(z)]
         """
-        cond = self.condition_encoder(map_img, start, goal)
-        cond = cond.unsqueeze(1).expand(-1, gt_trajs.shape[1], -1)  # (B, T, cond_dim)
+        map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
+        sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
+        cond = torch.cat([map_feat, sg_feat_T], dim=-1)  # (B, T, cond_dim)
 
         x = gt_trajs
         
@@ -86,7 +90,7 @@ class ConditionalFlowPlanner(nn.Module):
         
         # Apply forward transforms
         for block in self.flow_model:
-            x, _ = block(x, cond)  # We don't need log_det for visualization
+            x, _ = block(x, sg_feat_T, map_feat)  # We don't need log_det for visualization
             intermediates.append(x.clone())
 
             x = x[..., [1, 0]] # permutation

@@ -10,10 +10,10 @@ from rlnf_rrt.data_pipeline.dataset import RLNFDataset
 # ----------------------------
 # Utils
 # ----------------------------
+def ensure_dir(p: str):
+    Path(p).parent.mkdir(parents=True, exist_ok=True)
+
 def map_diff_stats(a: torch.Tensor, b: torch.Tensor):
-    """
-    a,b: (1,1,H,W) in [0,1] (assumed)
-    """
     da = (a - b).abs()
     return {
         "l1_mean": da.mean().item(),
@@ -23,50 +23,109 @@ def map_diff_stats(a: torch.Tensor, b: torch.Tensor):
         "occ_ratio_b": (b > 0.5).float().mean().item(),
     }
 
-def rbf_mmd2(x: np.ndarray, y: np.ndarray, sigma: float = 0.1) -> float:
-    """
-    Unbiased-ish MMD^2 with RBF kernel.
-    x,y: (N,2) in [0,1]
-    """
-    # subsample to keep it fast
+def rbf_mmd2(x: np.ndarray, y: np.ndarray, sigma: float = 0.08) -> float:
     N = min(len(x), 400)
     M = min(len(y), 400)
     x = x[np.random.choice(len(x), N, replace=False)]
     y = y[np.random.choice(len(y), M, replace=False)]
 
     def k(a, b):
-        # (N,2) (M,2) -> (N,M)
         aa = (a**2).sum(axis=1, keepdims=True)
         bb = (b**2).sum(axis=1, keepdims=True).T
         dist2 = aa + bb - 2.0 * (a @ b.T)
         return np.exp(-dist2 / (2.0 * sigma * sigma))
 
-    Kxx = k(x, x)
-    Kyy = k(y, y)
+    Kxx = k(x, x); np.fill_diagonal(Kxx, 0.0)
+    Kyy = k(y, y); np.fill_diagonal(Kyy, 0.0)
     Kxy = k(x, y)
-
-    # remove diagonal bias
-    np.fill_diagonal(Kxx, 0.0)
-    np.fill_diagonal(Kyy, 0.0)
 
     mmd2 = Kxx.sum() / (N * (N - 1) + 1e-8) + Kyy.sum() / (M * (M - 1) + 1e-8) - 2.0 * Kxy.mean()
     return float(mmd2)
 
-def ensure_dir(p: str):
-    Path(p).parent.mkdir(parents=True, exist_ok=True)
+def draw_map(ax, map_np, alpha=0.5, title=None):
+    ax.imshow(map_np, cmap="gray_r", extent=[0,1,0,1], alpha=alpha)
+    ax.set_xlim(0,1); ax.set_ylim(0,1)
+    ax.set_aspect("equal", "box")
+    if title is not None:
+        ax.set_title(title)
+
+def draw_points(ax, samples, gt_path=None, start=None, goal=None, color="blue", label="Generated"):
+    ax.scatter(samples[:,0], samples[:,1], c=color, s=8, alpha=0.35, label=label)
+    if gt_path is not None:
+        ax.scatter(gt_path[:,0], gt_path[:,1], c="green", s=8, alpha=0.8, label="GT")
+    if start is not None:
+        ax.add_patch(Circle(start, 0.02, color="red"))
+    if goal is not None:
+        ax.add_patch(Circle(goal, 0.02, color="lime"))
+
+# ----------------------------
+# Random Map Generator
+# ----------------------------
+def generate_random_map(H: int, W: int, p_free: float = 0.65, seed: int = None) -> np.ndarray:
+    """
+    Returns map in [0,1] with convention similar to your dataset:
+    - 1 = free
+    - 0 = obstacle
+    We'll create random rectangles/circles on a free canvas.
+    """
+    rng = np.random.default_rng(seed)
+    m = np.ones((H, W), dtype=np.float32)
+
+    # border as obstacle
+    m[0,:]=0; m[-1,:]=0; m[:,0]=0; m[:,-1]=0
+
+    # obstacle count scales with size
+    num_obs = rng.integers(8, 25)
+
+    for _ in range(num_obs):
+        kind = rng.choice(["rect", "circle"], p=[0.7, 0.3])
+        if kind == "rect":
+            oh = int(rng.integers(max(3, H//30), max(8, H//6)))
+            ow = int(rng.integers(max(3, W//30), max(8, W//6)))
+            y = int(rng.integers(1, H-oh-1))
+            x = int(rng.integers(1, W-ow-1))
+            m[y:y+oh, x:x+ow] = 0.0
+        else:
+            r = int(rng.integers(max(3, min(H,W)//40), max(8, min(H,W)//10)))
+            cy = int(rng.integers(r+1, H-r-1))
+            cx = int(rng.integers(r+1, W-r-1))
+            yy, xx = np.ogrid[:H, :W]
+            mask = (yy-cy)**2 + (xx-cx)**2 <= r*r
+            m[mask] = 0.0
+
+    return m  # (H,W) in [0,1]
+
+def sample_random_sg(map01: np.ndarray, max_tries=500, seed=None):
+    """
+    sample start/goal in free space if possible
+    returns (start_xy01, goal_xy01) in [0,1]^2
+    """
+    rng = np.random.default_rng(seed)
+    H, W = map01.shape
+    for _ in range(max_tries):
+        sy = rng.integers(0, H); sx = rng.integers(0, W)
+        gy = rng.integers(0, H); gx = rng.integers(0, W)
+        if map01[sy, sx] > 0.5 and map01[gy, gx] > 0.5:
+            start = np.array([sx / W, sy / H], dtype=np.float32)
+            goal  = np.array([gx / W, gy / H], dtype=np.float32)
+            return start, goal
+    # fallback uniform
+    return rng.random(2, dtype=np.float32), rng.random(2, dtype=np.float32)
 
 # ----------------------------
 # Main
 # ----------------------------
-def visualize_map_ablation_3way(checkpoint_path: str,
-                                idx: int = 182,
-                                other_idx: int = None,
-                                num_samples: int = 400,
-                                out_path: str = "result/visualization/ablation_3way.png"):
+def ablation_random_map_and_sg(
+    checkpoint_path: str,
+    idx: int = 182,
+    num_samples: int = 400,
+    out_path: str = "result/visualization/ablation_random_map_sg.png",
+    seed: int = 0
+):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     model = ConditionalFlowPlanner(
         num_blocks=4,
@@ -75,114 +134,100 @@ def visualize_map_ablation_3way(checkpoint_path: str,
         cond_dim=128,
         hidden_dim=128
     ).to(device)
-
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
     dataset = RLNFDataset(split="test")
-
     data = dataset[idx]
-    real_map = data["map"].unsqueeze(0).to(device)   # (1,1,H,W)
-    start = data["start"].unsqueeze(0).to(device)    # (1,2)
-    goal  = data["goal"].unsqueeze(0).to(device)     # (1,2)
-    gt_path = data["gt_path"].cpu().numpy()          # (T,2)
+
+    real_map = data["map"].unsqueeze(0).to(device)  # (1,1,H,W)
+    start = data["start"].unsqueeze(0).to(device)   # (1,2)
+    goal  = data["goal"].unsqueeze(0).to(device)    # (1,2)
+    gt_path = data["gt_path"].cpu().numpy()
+
     zero_map = torch.zeros_like(real_map)
 
-    # choose other map index (make it "very different" if not provided)
-    if other_idx is None:
-        # pick the first map that is sufficiently different by L1 mean
-        with torch.no_grad():
-            base = real_map.cpu()
-            other_idx = None
-            for j in range(len(dataset)):
-                if j == idx:
-                    continue
-                mj = dataset[j]["map"].unsqueeze(0).cpu()
-                stats = map_diff_stats(base, mj)
-                if stats["l1_mean"] > 0.20:   # threshold; adjust if needed
-                    other_idx = j
-                    break
-            if other_idx is None:
-                other_idx = (idx + 1) % len(dataset)
+    # random map same size
+    H, W = data["map"].shape[-2], data["map"].shape[-1]
+    rand_map_np = generate_random_map(H, W, seed=seed)
+    rand_map = torch.from_numpy(rand_map_np).float().unsqueeze(0).unsqueeze(0).to(device)  # (1,1,H,W)
 
-    other_map = dataset[other_idx]["map"].unsqueeze(0).to(device)
+    # random sg (prefer free space in rand_map)
+    rand_start_np, rand_goal_np = sample_random_sg(rand_map_np, seed=seed+1)
+    rand_start = torch.from_numpy(rand_start_np).float().unsqueeze(0).to(device)
+    rand_goal  = torch.from_numpy(rand_goal_np).float().unsqueeze(0).to(device)
 
-    # --- sampling ---
+    zero_sg = torch.zeros_like(start)
+
+    # configs: (name, map, start, goal)
+    cases = [
+        ("FULL(real_map, real_sg)", real_map, start, goal),
+        ("NO-MAP(zero_map, real_sg)", zero_map, start, goal),
+        ("RAND-MAP(rand_map, real_sg)", rand_map, start, goal),
+        ("NO-SG(real_map, zero_sg)", real_map, zero_sg, zero_sg),
+        ("RAND-SG(real_map, rand_sg)", real_map, rand_start, rand_goal),
+        ("NO-BOTH(zero_map, zero_sg)", zero_map, zero_sg, zero_sg),
+    ]
+
+    # sample all
+    samples = {}
     with torch.no_grad():
-        s_full  = model.sample(real_map,  start, goal, num_samples=num_samples).cpu().numpy()[0]   # (N,2)
-        s_zero  = model.sample(zero_map,  start, goal, num_samples=num_samples).cpu().numpy()[0]
-        s_other = model.sample(other_map, start, goal, num_samples=num_samples).cpu().numpy()[0]
+        for name, m, s, g in cases:
+            samples[name] = model.sample(m, s, g, num_samples=num_samples).cpu().numpy()[0]
 
-    # --- quantitative diagnostics ---
-    real_vs_other = map_diff_stats(real_map.cpu(), other_map.cpu())
-    real_vs_zero  = map_diff_stats(real_map.cpu(), zero_map.cpu())
+    # quantitative: compare each to FULL
+    base = samples[cases[0][0]]
+    print("\n--- MMD^2 vs FULL ---")
+    for name, *_ in cases[1:]:
+        mmd = rbf_mmd2(base, samples[name], sigma=0.08)
+        print(f"MMD(FULL, {name}) = {mmd:.6f}")
 
-    mmd_full_zero  = rbf_mmd2(s_full, s_zero, sigma=0.08)
-    mmd_full_other = rbf_mmd2(s_full, s_other, sigma=0.08)
-    mmd_zero_other = rbf_mmd2(s_zero, s_other, sigma=0.08)
+    # also print map diffs
+    print("\n--- Map differences ---")
+    print("real vs zero:", map_diff_stats(real_map.cpu(), zero_map.cpu()))
+    print("real vs rand:", map_diff_stats(real_map.cpu(), rand_map.cpu()))
 
-    print("\n--- Map difference ---")
-    print(f"idx={idx} vs other_idx={other_idx}: {real_vs_other}")
-    print(f"idx={idx} vs zero_map:           {real_vs_zero}")
+    # plot: 2 rows x 3 cols
+    fig, axes = plt.subplots(2, 3, figsize=(22, 12))
 
-    print("\n--- Sample distribution difference (MMD^2, RBF) ---")
-    print(f"MMD(full, zero)  = {mmd_full_zero:.6f}")
-    print(f"MMD(full, other) = {mmd_full_other:.6f}")
-    print(f"MMD(zero, other) = {mmd_zero_other:.6f}")
+    # backgrounds: use input map for each case (so visualization is honest)
+    bg = {
+        "FULL(real_map, real_sg)": data["map"][0].cpu().numpy(),
+        "NO-MAP(zero_map, real_sg)": np.zeros((H, W), dtype=np.float32),
+        "RAND-MAP(rand_map, real_sg)": rand_map_np,
+        "NO-SG(real_map, zero_sg)": data["map"][0].cpu().numpy(),
+        "RAND-SG(real_map, rand_sg)": data["map"][0].cpu().numpy(),
+        "NO-BOTH(zero_map, zero_sg)": np.zeros((H, W), dtype=np.float32),
+    }
 
-    # Interpretation hint
-    print("\nInterpretation:")
-    print("- If MMD(full, zero) ~ 0 and MMD(full, other) ~ 0 => model ignores map.")
-    print("- If MMD(full, other) is large => model uses map (good).")
-    print("- If MMD(full, zero) is large => model heavily relies on map; check robustness.\n")
+    # start/goal for drawing (convert to numpy 2D)
+    real_start_np = data["start"].cpu().numpy()
+    real_goal_np  = data["goal"].cpu().numpy()
 
-    # --- plot ---
-    fig, axes = plt.subplots(1, 3, figsize=(22, 7))
+    for ax, (name, m, s, g) in zip(axes.flatten(), cases):
+        draw_map(ax, bg[name], alpha=0.5, title=name)
+        # decide which start/goal to draw
+        if "RAND-SG" in name:
+            st = rand_start_np; gl = rand_goal_np
+        elif "NO-SG" in name or "NO-BOTH" in name:
+            st = (0.0, 0.0); gl = (0.0, 0.0)
+        else:
+            st = real_start_np; gl = real_goal_np
 
-    # helper to draw background map (for reference) and points
-    def draw(ax, bg_map_np, samples, title, color):
-        ax.imshow(bg_map_np, cmap="gray_r", extent=[0,1,0,1], alpha=0.5)
-        ax.scatter(samples[:,0], samples[:,1], c=color, s=8, alpha=0.35, label="Generated")
-        ax.scatter(gt_path[:,0], gt_path[:,1], c="green", s=8, alpha=0.8, label="GT")
-        ax.add_patch(Circle(data["start"].cpu().numpy(), 0.02, color="red"))
-        ax.add_patch(Circle(data["goal"].cpu().numpy(), 0.02, color="lime"))
-        ax.set_title(title)
-        ax.set_xlim(0,1); ax.set_ylim(0,1)
-        ax.set_aspect("equal", "box")
+        draw_points(ax, samples[name], gt_path=gt_path, start=st, goal=gl, color="blue")
 
-    bg_real = data["map"][0].cpu().numpy()
-    bg_zero = np.zeros_like(bg_real)
-    bg_other = dataset[other_idx]["map"][0].cpu().numpy()
-
-    draw(axes[0], bg_real,  s_full,  f"FULL (real_map)\nidx={idx}", "blue")
-
-    # IMPORTANT: show the *actual input* map (zero) for the ablation panel
-    draw(axes[1], bg_zero,  s_zero,  "NO-MAP (zero_map input)\n(background is zero)", "orange")
-
-    draw(axes[2], bg_other, s_other, f"OTHER-MAP (different map input)\nother_idx={other_idx}", "purple")
-
-    # compact legend
-    handles, labels = axes[0].get_legend_handles_labels()
+    handles, labels = axes[0,0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper center", ncol=3)
-
-    # annotate metrics
-    fig.suptitle(
-        f"Map Ablation 3-way | MMD2(full,zero)={mmd_full_zero:.4f} | "
-        f"MMD2(full,other)={mmd_full_other:.4f} | "
-        f"MapL1mean(real,other)={real_vs_other['l1_mean']:.3f}",
-        fontsize=14
-    )
-
-    ensure_dir(out_path)
     plt.tight_layout()
+    ensure_dir(out_path)
     plt.savefig(out_path, dpi=180)
-    print(f"✅ Saved {out_path}")
+    print(f"\n✅ Saved {out_path}")
 
 if __name__ == "__main__":
-    visualize_map_ablation_3way(
-        checkpoint_path="result/models/v6_2_best_model.pt",
+    ablation_random_map_and_sg(
+        checkpoint_path="result/models/v7_best_model.pt",
         idx=182,
-        other_idx=None,         # 자동으로 '충분히 다른' 맵을 찾음
         num_samples=400,
-        out_path="result/visualization/ablation_3way.png"
+        out_path="result/visualization/ablation_random_map_sg.png",
+        seed=0
     )
