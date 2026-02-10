@@ -5,10 +5,10 @@ from rlnf_rrt.models.condition_encoder import ConditionEncoderFiLMRawSG
 from rlnf_rrt.models.coupling_block import CouplingBlock
 
 class ConditionalFlowPlanner(nn.Module):
-    def __init__(self, num_blocks:int=4, sg_dim:int=2, position_embed_dim:int=128, map_embed_dim:int=256, cond_dim:int=128, hidden_dim:int=128, s_max:float=2.0):
+    def __init__(self, num_blocks:int=4, sg_dim:int=2, map_embed_dim:int=256, cond_dim:int=128, hidden_dim:int=128, s_max:float=2.0):
         super().__init__()
         self.sg_dim = sg_dim
-        self.condition_encoder:ConditionEncoderFiLMRawSG = ConditionEncoderFiLMRawSG(sg_dim, position_embed_dim, map_embed_dim, cond_dim)
+        self.condition_encoder:ConditionEncoderFiLMRawSG = ConditionEncoderFiLMRawSG(map_embed_dim, sg_dim)
 
         self.flow_model:nn.ModuleList = nn.ModuleList([
             CouplingBlock(cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max) for _ in range(num_blocks)
