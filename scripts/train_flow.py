@@ -124,7 +124,7 @@ def main():
     model = ConditionalFlowPlanner(
         num_blocks=config.num_blocks,
         sg_dim=config.sg_dim,
-        position_embed_dim=128,          # Fixed in current implementation
+        position_embed_dim=config.position_embed_dim,
         map_embed_dim=config.map_embed_dim,
         cond_dim=config.cond_dim,
         hidden_dim=config.hidden_dim,
