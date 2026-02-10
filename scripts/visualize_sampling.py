@@ -265,7 +265,7 @@ def main(args):
     
     # Load dataset
     print("Loading validation dataset...")
-    dataset = RLNFDataset(split="test")
+    dataset = RLNFDataset(split="valid")
     print(f"Dataset size: {len(dataset)}")
     
     # Create output directory

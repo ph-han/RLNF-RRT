@@ -8,14 +8,14 @@ class TrainConfig:
     batch_size: int = 32
     num_workers: int = 4
     num_samples_per_path: int = 512  # Number of points to sample from each gt_path
-    noise_std: float = 0.05  # Noise std for data augmentation
+    noise_std: float = 0.01  # Noise std for data augmentation
     
     # Model
     num_blocks: int = 8
     cond_dim: int = 128
     hidden_dim: int = 256
     s_max: float = 2.0  # max scaling factor in coupling layer
-    conditioning_mode: str = "concat"  # "concat"(paper-style) or "film"
+    conditioning_mode: str = "film"  # "concat"(paper-style) or "film"
     position_embed_dim: int = 32
     map_embed_dim: int = 256
     sg_dim: int = 2  # start/goal dimension (x, y)

@@ -52,7 +52,7 @@ def rbf_mmd2(x: np.ndarray, y: np.ndarray, sigma: float = 0.08) -> float:
     return float(mmd2)
 
 def draw_map(ax, map_np, alpha=0.5, title=None):
-    ax.imshow(map_np, cmap="gray_r", extent=[0,1,0,1], alpha=alpha)
+    ax.imshow(map_np, cmap="gray_r", origin='lower', extent=[0,1,0,1], alpha=alpha)
     ax.set_xlim(0,1); ax.set_ylim(0,1)
     ax.set_aspect("equal", "box")
     if title is not None:
@@ -240,9 +240,9 @@ def ablation_random_map_and_sg(
 
 if __name__ == "__main__":
     ablation_random_map_and_sg(
-        checkpoint_path="result/models/v7_best_model.pt",
-        idx=182,
-        num_samples=400,
+        checkpoint_path="result/models/v10_best_model.pt",
+        idx=np.random.randint(200),
+        num_samples=512,
         out_path="result/visualization/ablation_random_map_sg.png",
         seed=0
     )
