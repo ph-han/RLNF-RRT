@@ -25,6 +25,15 @@ from rlnf_rrt.data_pipeline.dataset import RLNFDataset
 from rlnf_rrt.models.conditional_flow_planner import ConditionalFlowPlanner
 
 
+def infer_conditioning_mode(checkpoint):
+    config = checkpoint.get("config", None)
+    if config is not None and hasattr(config, "conditioning_mode"):
+        return getattr(config, "conditioning_mode")
+    state_dict = checkpoint.get("model_state_dict", {})
+    has_film = any(".film1." in k or ".film2." in k for k in state_dict.keys())
+    return "film" if has_film else "concat"
+
+
 def visualize_flow_steps(model, dataset, device, num_samples=300, example_idx=None, save_path=None):
     """Visualize intermediate transformations through each coupling block."""
     model.eval()
@@ -120,23 +129,28 @@ def main(args):
         return
     
     print(f"Loading checkpoint from: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    config = checkpoint.get("config", None)
+    conditioning_mode = infer_conditioning_mode(checkpoint)
+
     # Create model
     model = ConditionalFlowPlanner(
-        num_blocks=args.num_blocks,
-        sg_dim=2,
-        position_embed_dim=128,
-        map_embed_dim=256,
-        cond_dim=args.cond_dim,
+        num_blocks=getattr(config, "num_blocks", args.num_blocks) if config else args.num_blocks,
+        sg_dim=getattr(config, "sg_dim", 2) if config else 2,
+        position_embed_dim=getattr(config, "position_embed_dim", 128) if config else 128,
+        map_embed_dim=getattr(config, "map_embed_dim", 256) if config else 256,
+        cond_dim=getattr(config, "cond_dim", args.cond_dim) if config else args.cond_dim,
+        hidden_dim=getattr(config, "hidden_dim", 128) if config else 128,
+        s_max=getattr(config, "s_max", 2.0) if config else 2.0,
+        conditioning_mode=conditioning_mode,
     ).to(device)
     
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     
     print(f"✅ Loaded model from epoch {checkpoint['epoch']}")
-    print(f"   Val Loss: {checkpoint['val_loss']:.4f}")
-    print(f"   Number of coupling blocks: {args.num_blocks}")
+    print(f"   Number of coupling blocks: {len(model.flow_model)}")
+    print(f"   Conditioning mode: {conditioning_mode}")
     
     # Load dataset
     print("Loading validation dataset...")

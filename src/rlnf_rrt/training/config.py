@@ -11,9 +11,9 @@ class TrainConfig:
     noise_std: float = 0.05  # Noise std for data augmentation
     
     # Model
-    num_blocks: int = 4
+    num_blocks: int = 8
     cond_dim: int = 128
-    hidden_dim: int = 128
+    hidden_dim: int = 256
     s_max: float = 2.0  # max scaling factor in coupling layer
     conditioning_mode: str = "concat"  # "concat"(paper-style) or "film"
     position_embed_dim: int = 32
@@ -32,7 +32,7 @@ class TrainConfig:
     T_max: int = 50
     
     # Training
-    epochs: int = 50
+    epochs: int = 100
     grad_clip: float = 1.0
     log_interval: int = 10  # Log every N batches
     val_interval: int = 1  # Validate every N epochs

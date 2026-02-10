@@ -7,6 +7,15 @@ from pathlib import Path
 from rlnf_rrt.models.conditional_flow_planner import ConditionalFlowPlanner
 from rlnf_rrt.data_pipeline.dataset import RLNFDataset
 
+
+def infer_conditioning_mode(checkpoint):
+    config = checkpoint.get("config", None)
+    if config is not None and hasattr(config, "conditioning_mode"):
+        return getattr(config, "conditioning_mode")
+    state_dict = checkpoint.get("model_state_dict", {})
+    has_film = any(".film1." in k or ".film2." in k for k in state_dict.keys())
+    return "film" if has_film else "concat"
+
 # ----------------------------
 # Utils
 # ----------------------------
@@ -126,16 +135,22 @@ def ablation_random_map_and_sg(
     print(f"Device: {device}")
 
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    config = ckpt.get("config", None)
+    conditioning_mode = infer_conditioning_mode(ckpt)
 
     model = ConditionalFlowPlanner(
-        num_blocks=4,
-        position_embed_dim=32,
-        map_embed_dim=256,
-        cond_dim=128,
-        hidden_dim=128
+        num_blocks=getattr(config, "num_blocks", 4) if config else 4,
+        sg_dim=getattr(config, "sg_dim", 2) if config else 2,
+        position_embed_dim=getattr(config, "position_embed_dim", 32) if config else 32,
+        map_embed_dim=getattr(config, "map_embed_dim", 256) if config else 256,
+        cond_dim=getattr(config, "cond_dim", 128) if config else 128,
+        hidden_dim=getattr(config, "hidden_dim", 128) if config else 128,
+        s_max=getattr(config, "s_max", 2.0) if config else 2.0,
+        conditioning_mode=conditioning_mode,
     ).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
+    print(f"Conditioning mode: {conditioning_mode}")
 
     dataset = RLNFDataset(split="test")
     data = dataset[idx]

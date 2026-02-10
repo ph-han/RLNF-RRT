@@ -23,6 +23,47 @@ from rlnf_rrt.data_pipeline.dataset import RLNFDataset
 from rlnf_rrt.models.conditional_flow_planner import ConditionalFlowPlanner
 
 
+def to_plot_xy(points: np.ndarray) -> np.ndarray:
+    """Convert dataset/image-style coords (y-down) to plot coords (y-up)."""
+    out = points.copy()
+    out[..., 1] = 1.0 - out[..., 1]
+    return out
+
+
+def infer_conditioning_mode(checkpoint):
+    config = checkpoint.get("config", None)
+    if config is not None and hasattr(config, "conditioning_mode"):
+        return getattr(config, "conditioning_mode")
+    state_dict = checkpoint.get("model_state_dict", {})
+    has_film = any(".film1." in k or ".film2." in k for k in state_dict.keys())
+    return "film" if has_film else "concat"
+
+
+def sample_collision_stats(samples: np.ndarray, map_np: np.ndarray) -> dict:
+    """
+    Collision in dataset coords (x, y) where y increases downward in image row index.
+    map_np: free=1, obstacle=0.
+    """
+    h, w = map_np.shape
+    x = samples[:, 0]
+    y = samples[:, 1]
+
+    oob = (x < 0.0) | (x > 1.0) | (y < 0.0) | (y > 1.0)
+    col = np.clip((x * w).astype(int), 0, w - 1)
+    row = np.clip((y * h).astype(int), 0, h - 1)
+
+    obstacle = map_np[row, col] <= 0.5
+    collision = obstacle | oob
+    free = (~collision)
+
+    return {
+        "collision_rate": float(collision.mean()),
+        "obstacle_hit_rate": float(obstacle.mean()),
+        "oob_rate": float(oob.mean()),
+        "free_rate": float(free.mean()),
+    }
+
+
 def visualize_sample_grid(model, dataset, device, num_samples=500, num_examples=4, save_path=None):
     """Visualize samples in a grid layout."""
     model.eval()
@@ -35,6 +76,7 @@ def visualize_sample_grid(model, dataset, device, num_samples=500, num_examples=
     fig, axes = plt.subplots(rows, cols, figsize=(12, 12))
     axes = axes.flatten()
     
+    stats_all = []
     for idx, ax in zip(indices, axes):
         data = dataset[idx]
         
@@ -51,18 +93,29 @@ def visualize_sample_grid(model, dataset, device, num_samples=500, num_examples=
         start_np = start[0].cpu().numpy()
         goal_np = goal[0].cpu().numpy()
         map_np = map_img[0, 0].cpu().numpy()
+        gt_plot = to_plot_xy(gt_path)
+        samples_plot = to_plot_xy(samples)
+        start_plot = to_plot_xy(start_np)
+        goal_plot = to_plot_xy(goal_np)
+        stats = sample_collision_stats(samples, map_np)
+        stats["example_idx"] = int(idx)
+        stats_all.append(stats)
         
         # Plot
-        im = ax.imshow(map_np, cmap='hot', extent=[0, 1, 0, 1], alpha=0.8)
-        ax.scatter(gt_path[:, 0], gt_path[:, 1], c='green', s=8, alpha=0.5, label='GT Path', zorder=5)
-        ax.scatter(samples[:, 0], samples[:, 1], c='blue', s=8, alpha=0.4, label=f'Samples (n={num_samples})', zorder=3)
-        ax.add_patch(Circle(start_np, 0.02, color='red', zorder=10, label='Start'))
-        ax.add_patch(Circle(goal_np, 0.02, color='lime', zorder=10, label='Goal'))
+        ax.imshow(map_np, cmap='hot', origin='upper', extent=[0, 1, 0, 1], alpha=0.8)
+        ax.scatter(gt_plot[:, 0], gt_plot[:, 1], c='green', s=8, alpha=0.5, label='GT Path', zorder=5)
+        ax.scatter(samples_plot[:, 0], samples_plot[:, 1], c='blue', s=8, alpha=0.4, label=f'Samples (n={num_samples})', zorder=3)
+        ax.add_patch(Circle(start_plot, 0.02, color='red', zorder=10, label='Start'))
+        ax.add_patch(Circle(goal_plot, 0.02, color='lime', zorder=10, label='Goal'))
         
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
         ax.set_aspect('equal')
-        ax.set_title(f'Example {idx}', fontsize=11, fontweight='bold')
+        ax.set_title(
+            f"Example {idx} | collision {stats['collision_rate']*100:.1f}%",
+            fontsize=11,
+            fontweight='bold',
+        )
         
         if idx == indices[0]:
             ax.legend(loc='upper right', fontsize=8)
@@ -72,6 +125,7 @@ def visualize_sample_grid(model, dataset, device, num_samples=500, num_examples=
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     print(f"✅ Saved sample grid to: {save_path}")
     plt.close()
+    return stats_all
 
 
 def visualize_sample_density(model, dataset, device, num_samples=1000, save_path=None):
@@ -95,35 +149,51 @@ def visualize_sample_density(model, dataset, device, num_samples=1000, save_path
     start_np = start[0].cpu().numpy()
     goal_np = goal[0].cpu().numpy()
     map_np = map_img[0, 0].cpu().numpy()
+    gt_plot = to_plot_xy(gt_path)
+    samples_plot = to_plot_xy(samples)
+    start_plot = to_plot_xy(start_np)
+    goal_plot = to_plot_xy(goal_np)
+    stats = sample_collision_stats(samples, map_np)
     
     # Create figure
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
     # Left: Scatter plot
     ax = axes[0]
-    ax.imshow(map_np, cmap='gray_r', extent=[0, 1, 0, 1], alpha=0.5)
-    ax.scatter(samples[:, 0], samples[:, 1], c='blue', s=10, alpha=0.5, label=f'Samples (n={num_samples})', zorder=3)
-    ax.scatter(gt_path[:, 0], gt_path[:, 1], c='green', s=10, alpha=0.9, label='GT Path', zorder=5)
-    ax.add_patch(Circle(start_np, 0.02, color='red', zorder=10, label='Start'))
-    ax.add_patch(Circle(goal_np, 0.02, color='lime', zorder=10, label='Goal'))
+    ax.imshow(map_np, cmap='gray_r', origin='upper', extent=[0, 1, 0, 1], alpha=0.5)
+    ax.scatter(samples_plot[:, 0], samples_plot[:, 1], c='blue', s=10, alpha=0.5, label=f'Samples (n={num_samples})', zorder=3)
+    ax.scatter(gt_plot[:, 0], gt_plot[:, 1], c='green', s=10, alpha=0.9, label='GT Path', zorder=5)
+    ax.add_patch(Circle(start_plot, 0.02, color='red', zorder=10, label='Start'))
+    ax.add_patch(Circle(goal_plot, 0.02, color='lime', zorder=10, label='Goal'))
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.set_aspect('equal')
     ax.set_title('Sample Distribution', fontsize=12, fontweight='bold')
     ax.legend(fontsize=9)
+    ax.text(
+        0.02,
+        0.02,
+        f"collision: {stats['collision_rate']*100:.1f}%\n"
+        f"obstacle: {stats['obstacle_hit_rate']*100:.1f}%\n"
+        f"oob: {stats['oob_rate']*100:.1f}%",
+        transform=ax.transAxes,
+        fontsize=9,
+        verticalalignment="bottom",
+        bbox=dict(facecolor="white", alpha=0.7, edgecolor="none"),
+    )
     
     # Right: Density heatmap
     ax = axes[1]
-    ax.imshow(map_np, cmap='gray', origin='lower', extent=[0, 1, 0, 1], alpha=0.3)
+    ax.imshow(map_np, cmap='gray', origin='upper', extent=[0, 1, 0, 1], alpha=0.3)
     
     # 2D histogram
-    h, xedges, yedges = np.histogram2d(samples[:, 0], samples[:, 1], bins=50, range=[[0, 1], [0, 1]])
+    h, xedges, yedges = np.histogram2d(samples_plot[:, 0], samples_plot[:, 1], bins=50, range=[[0, 1], [0, 1]])
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
     im = ax.imshow(h.T, origin='lower', extent=extent, cmap='hot', alpha=0.7, zorder=1)
     
-    ax.scatter(gt_path[:, 0], gt_path[:, 1], c='green', s=10, alpha=0.5, label='GT Path', zorder=5)
-    ax.add_patch(Circle(start_np, 0.02, color='red', zorder=10))
-    ax.add_patch(Circle(goal_np, 0.02, color='lime', zorder=10))
+    ax.scatter(gt_plot[:, 0], gt_plot[:, 1], c='green', s=10, alpha=0.5, label='GT Path', zorder=5)
+    ax.add_patch(Circle(start_plot, 0.02, color='red', zorder=10))
+    ax.add_patch(Circle(goal_plot, 0.02, color='lime', zorder=10))
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.set_aspect('equal')
@@ -134,6 +204,7 @@ def visualize_sample_density(model, dataset, device, num_samples=1000, save_path
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     print(f"✅ Saved density heatmap to: {save_path}")
     plt.close()
+    return stats
 
 
 def main(args):
@@ -159,19 +230,29 @@ def main(args):
         position_embed_dim = getattr(config, 'position_embed_dim', 128)
         cond_dim = getattr(config, 'cond_dim', args.cond_dim)
         map_embed_dim = getattr(config, 'map_embed_dim', 256)
+        hidden_dim = getattr(config, 'hidden_dim', 128)
+        s_max = getattr(config, 's_max', 2.0)
+        sg_dim = getattr(config, 'sg_dim', 2)
     else:
         num_blocks = args.num_blocks
         position_embed_dim = 128
         cond_dim = args.cond_dim
         map_embed_dim = 256
+        hidden_dim = 128
+        s_max = 2.0
+        sg_dim = 2
+
+    conditioning_mode = infer_conditioning_mode(checkpoint)
 
     model = ConditionalFlowPlanner(
         num_blocks=num_blocks,
-        sg_dim=2,
+        sg_dim=sg_dim,
         position_embed_dim=position_embed_dim,
         map_embed_dim=map_embed_dim,
         cond_dim=cond_dim,
-        hidden_dim=128
+        hidden_dim=hidden_dim,
+        s_max=s_max,
+        conditioning_mode=conditioning_mode,
     ).to(device)
     
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -180,6 +261,7 @@ def main(args):
     print(f"✅ Loaded model from epoch {checkpoint['epoch']}")
     val_loss = checkpoint.get('val_loss', checkpoint.get('best_val_loss', 'N/A'))
     print(f"   Val Loss: {val_loss}")
+    print(f"   Conditioning mode: {conditioning_mode}")
     
     # Load dataset
     print("Loading validation dataset...")
@@ -197,12 +279,35 @@ def main(args):
     print(f"\nGenerating visualizations with {args.num_samples} samples...")
     
     grid_path = save_dir / f"samples_grid_{timestamp}.png"
-    visualize_sample_grid(model, dataset, device, num_samples=args.num_samples, 
-                          num_examples=args.num_examples, save_path=grid_path)
+    grid_stats = visualize_sample_grid(
+        model,
+        dataset,
+        device,
+        num_samples=args.num_samples,
+        num_examples=args.num_examples,
+        save_path=grid_path,
+    )
     
     density_path = save_dir / f"sample_density_{timestamp}.png"
-    visualize_sample_density(model, dataset, device, num_samples=args.num_samples, 
-                             save_path=density_path)
+    density_stats = visualize_sample_density(
+        model,
+        dataset,
+        device,
+        num_samples=args.num_samples,
+        save_path=density_path,
+    )
+    if grid_stats:
+        collision_rates = [s["collision_rate"] for s in grid_stats]
+        obstacle_rates = [s["obstacle_hit_rate"] for s in grid_stats]
+        oob_rates = [s["oob_rate"] for s in grid_stats]
+        print("Grid collision stats:")
+        print(f"  mean collision: {np.mean(collision_rates)*100:.2f}%")
+        print(f"  mean obstacle:  {np.mean(obstacle_rates)*100:.2f}%")
+        print(f"  mean oob:       {np.mean(oob_rates)*100:.2f}%")
+    print("Density example collision stats:")
+    print(f"  collision: {density_stats['collision_rate']*100:.2f}%")
+    print(f"  obstacle:  {density_stats['obstacle_hit_rate']*100:.2f}%")
+    print(f"  oob:       {density_stats['oob_rate']*100:.2f}%")
     
     print("\n✅ Sampling visualization complete!")
 

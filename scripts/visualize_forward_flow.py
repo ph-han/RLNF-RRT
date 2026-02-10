@@ -21,11 +21,18 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
-from tqdm import tqdm
 
 from rlnf_rrt.data_pipeline.dataset import RLNFDataset
 from rlnf_rrt.models.conditional_flow_planner import ConditionalFlowPlanner
-from rlnf_rrt.utils.utils import load_cspace_img_to_np
+
+
+def infer_conditioning_mode(checkpoint):
+    config = checkpoint.get("config", None)
+    if config is not None and hasattr(config, "conditioning_mode"):
+        return getattr(config, "conditioning_mode")
+    state_dict = checkpoint.get("model_state_dict", {})
+    has_film = any(".film1." in k or ".film2." in k for k in state_dict.keys())
+    return "film" if has_film else "concat"
 
 
 class FastRLNFDataset(RLNFDataset):
@@ -60,6 +67,47 @@ class FastRLNFDataset(RLNFDataset):
             self.gt_list.append(f"{self.data_path}/gt_path/{row['gt_path_file']}")
             
     # __len__ and __getitem__ are inherited from RLNFDataset and work fine
+
+
+def latent_normality_metrics(z: np.ndarray) -> dict:
+    """Compute simple diagnostics for z ~ N(0, I) in 2D."""
+    eps = 1e-6
+    n, d = z.shape
+    mu = z.mean(axis=0)
+    cov = np.cov(z, rowvar=False)
+    if cov.ndim == 0:
+        cov = np.array([[float(cov)]], dtype=np.float32)
+    cov_reg = cov + np.eye(cov.shape[0]) * eps
+    inv_cov = np.linalg.inv(cov_reg)
+
+    centered = z - mu
+    d2 = np.einsum("ni,ij,nj->n", centered, inv_cov, centered)
+    mardia_kurtosis = float(np.mean(d2 ** 2))
+    expected_mardia_kurtosis = float(d * (d + 2))
+
+    r = np.linalg.norm(z, axis=1)
+    r_mean = float(r.mean())
+    r_std = float(r.std())
+    # For chi distribution with k=2 (radius of N(0,I) in 2D)
+    chi2_mean = float(np.sqrt(np.pi / 2.0))
+    chi2_std = float(np.sqrt((4.0 - np.pi) / 2.0))
+
+    var_diag = np.diag(cov)
+    corr = float(np.corrcoef(z, rowvar=False)[0, 1]) if d >= 2 else 0.0
+
+    return {
+        "mean_x": float(mu[0]) if d >= 1 else 0.0,
+        "mean_y": float(mu[1]) if d >= 2 else 0.0,
+        "var_x": float(var_diag[0]) if d >= 1 else 0.0,
+        "var_y": float(var_diag[1]) if d >= 2 else 0.0,
+        "corr_xy": corr,
+        "r_mean": r_mean,
+        "r_std": r_std,
+        "chi2_r_mean_ref": chi2_mean,
+        "chi2_r_std_ref": chi2_std,
+        "mardia_kurtosis": mardia_kurtosis,
+        "mardia_kurtosis_ref": expected_mardia_kurtosis,
+    }
 
 
 def visualize_forward_steps(model, dataset, device, example_idx=None, save_path=None):
@@ -105,6 +153,7 @@ def visualize_forward_steps(model, dataset, device, example_idx=None, save_path=
     else:
         axes = axes.flatten()
     
+    latent_metrics = latent_normality_metrics(intermediates[-1])
     for i, (ax, z) in enumerate(zip(axes, intermediates)):
         is_data_space = (i == 0)
         is_latent_space = (i == num_steps - 1)
@@ -154,6 +203,24 @@ def visualize_forward_steps(model, dataset, device, example_idx=None, save_path=
         # Only add legend if it fits, or just once
         if i == 0 or i == num_steps - 1:
             ax.legend(fontsize=8, loc='upper right')
+
+        if is_latent_space:
+            text = (
+                f"mu=({latent_metrics['mean_x']:.2f},{latent_metrics['mean_y']:.2f})\n"
+                f"var=({latent_metrics['var_x']:.2f},{latent_metrics['var_y']:.2f})\n"
+                f"corr={latent_metrics['corr_xy']:.2f}\n"
+                f"r(mean/std)={latent_metrics['r_mean']:.2f}/{latent_metrics['r_std']:.2f}\n"
+                f"mardia={latent_metrics['mardia_kurtosis']:.2f} (ref {latent_metrics['mardia_kurtosis_ref']:.2f})"
+            )
+            ax.text(
+                0.03,
+                0.03,
+                text,
+                transform=ax.transAxes,
+                fontsize=8,
+                verticalalignment="bottom",
+                bbox=dict(facecolor="white", alpha=0.7, edgecolor="none"),
+            )
     
     # Hide unused subplots
     for ax in axes[num_steps:]:
@@ -165,6 +232,7 @@ def visualize_forward_steps(model, dataset, device, example_idx=None, save_path=
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     print(f"✅ Saved forward flow steps to: {save_path}")
     plt.close()
+    return latent_metrics
 
 
 def main(args):
@@ -180,22 +248,27 @@ def main(args):
         return
     
     print(f"Loading checkpoint from: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    config = checkpoint.get("config", None)
+    conditioning_mode = infer_conditioning_mode(checkpoint)
     
     # Create model
     model = ConditionalFlowPlanner(
-        num_blocks=args.num_blocks,
-        sg_dim=2,
-        position_embed_dim=128,
-        map_embed_dim=256,
-        cond_dim=args.cond_dim,
+        num_blocks=getattr(config, "num_blocks", args.num_blocks) if config else args.num_blocks,
+        sg_dim=getattr(config, "sg_dim", 2) if config else 2,
+        position_embed_dim=getattr(config, "position_embed_dim", 128) if config else 128,
+        map_embed_dim=getattr(config, "map_embed_dim", 256) if config else 256,
+        cond_dim=getattr(config, "cond_dim", args.cond_dim) if config else args.cond_dim,
+        hidden_dim=getattr(config, "hidden_dim", 128) if config else 128,
+        s_max=getattr(config, "s_max", 2.0) if config else 2.0,
+        conditioning_mode=conditioning_mode,
     ).to(device)
     
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     
     print(f"✅ Loaded model from epoch {checkpoint['epoch']}")
-    print(f"   Val Loss: {checkpoint['val_loss']:.4f}")
+    print(f"   Conditioning mode: {conditioning_mode}")
     
     # Load dataset (Optimized)
     print("Loading train dataset (partial)...")
@@ -219,13 +292,31 @@ def main(args):
     # Use all loaded examples
     indices = np.arange(len(dataset))
     
+    all_metrics = []
     for i, idx in enumerate(indices):
         save_path = save_dir / f"forward_steps_{i}_{timestamp}.png"
-        visualize_forward_steps(model, dataset, device, 
-                               example_idx=idx, 
-                               save_path=save_path)
+        metrics = visualize_forward_steps(
+            model,
+            dataset,
+            device,
+            example_idx=idx,
+            save_path=save_path,
+        )
+        metrics["example_idx"] = int(idx)
+        all_metrics.append(metrics)
     
     print(f"\n✅ Generated {len(dataset)} forward flow visualizations!")
+    if all_metrics:
+        df = pd.DataFrame(all_metrics)
+        metrics_path = save_dir / f"forward_metrics_{timestamp}.csv"
+        df.to_csv(metrics_path, index=False)
+        print(f"✅ Saved latent diagnostics to: {metrics_path}")
+        print("Latent diagnostics mean:")
+        print(
+            df[["mean_x", "mean_y", "var_x", "var_y", "corr_xy", "r_mean", "r_std", "mardia_kurtosis"]]
+            .mean()
+            .to_string(float_format=lambda x: f"{x:.4f}")
+        )
 
 
 if __name__ == "__main__":
