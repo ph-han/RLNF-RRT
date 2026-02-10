@@ -21,7 +21,7 @@ import json
 
 def load_loss_history(checkpoint_path):
     """Load loss history from checkpoint."""
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     
     # Check if checkpoint has loss history
     if "loss_history" in checkpoint:

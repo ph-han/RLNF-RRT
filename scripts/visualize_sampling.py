@@ -149,7 +149,7 @@ def main(args):
         return
     
     print(f"Loading checkpoint from: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     
     # Create model
     model = ConditionalFlowPlanner(
@@ -164,7 +164,8 @@ def main(args):
     model.eval()
     
     print(f"✅ Loaded model from epoch {checkpoint['epoch']}")
-    print(f"   Val Loss: {checkpoint['val_loss']:.4f}")
+    val_loss = checkpoint.get('val_loss', checkpoint.get('best_val_loss', 'N/A'))
+    print(f"   Val Loss: {val_loss}")
     
     # Load dataset
     print("Loading validation dataset...")
