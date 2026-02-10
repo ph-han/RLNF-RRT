@@ -24,6 +24,7 @@ class ConditionalFlowPlanner(nn.Module):
             x, log_det_block = block(x, cond)
             log_det += log_det_block
 
+            x = x[..., [1, 0]] # permutation
         return x, log_det
 
     def sample(self, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor, num_samples:int=1000):
@@ -33,6 +34,7 @@ class ConditionalFlowPlanner(nn.Module):
         batch_size = map_img.shape[0]
         z = torch.randn(batch_size, num_samples, self.sg_dim, device=map_img.device)
         for block in reversed(self.flow_model):
+            z = z[..., [1, 0]] # permutation
             z = block.inverse(z, cond)
 
         return z
@@ -55,6 +57,7 @@ class ConditionalFlowPlanner(nn.Module):
         
         # Apply inverse transforms
         for block in reversed(self.flow_model):
+            z = z[..., [1, 0]] # permutation
             z = block.inverse(z, cond)
             intermediates.append(z.clone())
         
@@ -85,5 +88,7 @@ class ConditionalFlowPlanner(nn.Module):
         for block in self.flow_model:
             x, _ = block(x, cond)  # We don't need log_det for visualization
             intermediates.append(x.clone())
+
+            x = x[..., [1, 0]] # permutation
             
         return intermediates
