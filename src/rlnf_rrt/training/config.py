@@ -8,6 +8,7 @@ class TrainConfig:
     batch_size: int = 32
     num_workers: int = 4
     num_samples_per_path: int = 512  # Number of points to sample from each gt_path
+    noise_std: float = 0.05  # Noise std for data augmentation
     
     # Model
     num_blocks: int = 4
