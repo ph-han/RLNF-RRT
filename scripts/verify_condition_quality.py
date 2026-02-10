@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from rlnf_rrt.data_pipeline.dataset import RLNFDataset
 from rlnf_rrt.models.condition_encoder import ConditionEncoder
+from rlnf_rrt.models.conditional_flow_planner import ConditionalFlowPlanner
 
 def verify_condition_sensitivity():
     # 1. Load Dataset
@@ -15,13 +16,24 @@ def verify_condition_sensitivity():
     map_base = sample["map"].unsqueeze(0)
     start_base = sample["start"].unsqueeze(0)
     goal_base = sample["goal"].unsqueeze(0)
-
-    # 2. Initialize Model
-    model = ConditionEncoder()
-    # IMPORTANT: Use train() mode for uninitialized models!
-    # In eval() mode, BatchNorm uses running stats (initially 0/1), which ruins the signal.
-    # In train() mode, it uses the current batch stats.
-    model.train() 
+    
+    # Re-create model structure (TrajFlowPlanner as used in v3 training)
+    # Check args in train_flow.py used for v3:
+    # default args: num_blocks=4, map_embed_dim=256, cond_dim=128, hidden_dim=128
+    full_model = ConditionalFlowPlanner(
+        num_blocks=4, 
+        map_embed_dim=256,
+        cond_dim=128,
+        hidden_dim=128
+    )
+    
+    checkpoint_path = "result/checkpoints/v3_model_50.pt"
+    print(f"Loading checkpoint from {checkpoint_path}...")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    full_model.load_state_dict(checkpoint['model_state_dict'])
+    
+    model = full_model.condition_encoder
+    model.eval() # Use eval mode for trained model! 
 
     print("-" * 50)
     print("Testing Condition Encoder Sensitivity")

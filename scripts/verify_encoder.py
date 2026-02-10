@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from rlnf_rrt.data_pipeline.dataset import RLNFDataset
 from rlnf_rrt.models.condition_encoder import ConditionEncoder
+from rlnf_rrt.models.conditional_flow_planner import ConditionalFlowPlanner
 
 def verify_encoder():
     # 1. Load Dataset
@@ -16,8 +17,20 @@ def verify_encoder():
 
     print(f"Map shape: {map_img.shape}")
 
-    # 2. Initialize Model
-    model = ConditionEncoder()
+
+    full_model = ConditionalFlowPlanner(
+        num_blocks=4,
+        map_embed_dim=256,
+        cond_dim=128,
+        hidden_dim=128
+    )
+    
+    checkpoint_path = "result/checkpoints/v3_model_50.pt"
+    print(f"Loading checkpoint from {checkpoint_path}...")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    full_model.load_state_dict(checkpoint['model_state_dict'])
+
+    model = full_model.condition_encoder
     model.eval()
 
     # 3. Hook Feature Maps (Intermediate Outputs)

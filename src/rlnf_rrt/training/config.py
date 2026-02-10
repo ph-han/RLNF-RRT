@@ -19,17 +19,18 @@ class TrainConfig:
     sg_dim: int = 2  # start/goal dimension (x, y)
     
     # Optimizer
-    lr: float = 1e-4
-    weight_decay: float = 1e-5
+    lr: float = 5e-4
+    weight_decay: float = 1e-3
     betas: tuple[float, float] = (0.9, 0.999)
     
     # Scheduler
     scheduler: str = "cosine"  # "cosine" or "step"
     warmup_epochs: int = 5
     min_lr: float = 1e-6
+    T_max: int = 50
     
     # Training
-    epochs: int = 100
+    epochs: int = 50
     grad_clip: float = 1.0
     log_interval: int = 10  # Log every N batches
     val_interval: int = 1  # Validate every N epochs
