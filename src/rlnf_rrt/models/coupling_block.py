@@ -82,6 +82,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class FiLM(nn.Module):
     def __init__(self, map_dim: int, hidden_dim: int):
         super().__init__()
@@ -135,20 +136,69 @@ class STNetFiLM(nn.Module):
         return self.out(h)                            # (B,T,1)
 
 
+class STNetConcat(nn.Module):
+    """
+    Paper-style conditional network:
+      input = [z_component, condition]
+      condition = [sg_feat, map_feat]
+    """
+    def __init__(self, cond_dim: int, hidden_dim: int = 128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(1 + cond_dim, hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU(0.2),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, z1: torch.Tensor, cond: torch.Tensor):
+        x = torch.cat([z1, cond], dim=-1)
+        return self.net(x)
+
+
 class CouplingBlock(nn.Module):
-    def __init__(self, sg_dim:int=7, map_dim:int=256, hidden_dim:int=128, s_max:float=2.0):
+    def __init__(
+        self,
+        sg_dim:int=7,
+        map_dim:int=256,
+        hidden_dim:int=128,
+        s_max:float=2.0,
+        conditioning_mode:str="concat",
+    ):
         super().__init__()
         self.sg_dim = sg_dim
         self.map_dim = map_dim
         self.s_max = s_max  # scale factor for s_raw
+        self.conditioning_mode = conditioning_mode
 
-        # Networks for component a (conditioned on b)
-        self.s_a = STNetFiLM(sg_dim, map_dim, hidden_dim)
-        self.t_a = STNetFiLM(sg_dim, map_dim, hidden_dim)
+        if conditioning_mode not in {"concat", "film"}:
+            raise ValueError(f"conditioning_mode must be 'concat' or 'film', got {conditioning_mode}")
 
-        # Networks for component b (conditioned on a)
-        self.s_b = STNetFiLM(sg_dim, map_dim, hidden_dim)
-        self.t_b = STNetFiLM(sg_dim, map_dim, hidden_dim)
+        if conditioning_mode == "film":
+            # FiLM variant
+            self.s_a = STNetFiLM(sg_dim, map_dim, hidden_dim)
+            self.t_a = STNetFiLM(sg_dim, map_dim, hidden_dim)
+            self.s_b = STNetFiLM(sg_dim, map_dim, hidden_dim)
+            self.t_b = STNetFiLM(sg_dim, map_dim, hidden_dim)
+        else:
+            # Paper-aligned variant: condition is concatenated into s/t nets.
+            cond_dim = sg_dim + map_dim
+            self.s_a = STNetConcat(cond_dim, hidden_dim)
+            self.t_a = STNetConcat(cond_dim, hidden_dim)
+            self.s_b = STNetConcat(cond_dim, hidden_dim)
+            self.t_b = STNetConcat(cond_dim, hidden_dim)
+
+    def _build_cond(self, sg_feat: torch.Tensor, map_feat: torch.Tensor) -> torch.Tensor:
+        bsz, steps, _ = sg_feat.shape
+        map_feat_t = map_feat.unsqueeze(1).expand(bsz, steps, self.map_dim)
+        return torch.cat([sg_feat, map_feat_t], dim=-1)
+
+    def _st_forward(self, net: nn.Module, z1: torch.Tensor, sg_feat: torch.Tensor, map_feat: torch.Tensor):
+        if self.conditioning_mode == "film":
+            return net(z1, sg_feat, map_feat)
+        cond = self._build_cond(sg_feat, map_feat)
+        return net(z1, cond)
 
     def _scale(self, s_raw):
         return torch.tanh(s_raw) * self.s_max
@@ -161,13 +211,13 @@ class CouplingBlock(nn.Module):
         z_b:torch.Tensor = x[:, :, 1:2]  # (B, T, 1)
 
         # component 1: z_a (conditioned on z_b)
-        s_a:torch.Tensor = self._scale(self.s_a(z_b, sg_feat, map_feat))  # (B, T, 1)
-        t_a:torch.Tensor = self.t_a(z_b, sg_feat, map_feat)  # (B, T, 1)
+        s_a:torch.Tensor = self._scale(self._st_forward(self.s_a, z_b, sg_feat, map_feat))  # (B, T, 1)
+        t_a:torch.Tensor = self._st_forward(self.t_a, z_b, sg_feat, map_feat)  # (B, T, 1)
         z_a:torch.Tensor = z_a * torch.exp(s_a) + t_a
 
         # component 2: z_b (conditioned on updated z_a)
-        s_b:torch.Tensor = self._scale(self.s_b(z_a, sg_feat, map_feat))  # (B, T, 1)
-        t_b:torch.Tensor = self.t_b(z_a, sg_feat, map_feat)  # (B, T, 1)
+        s_b:torch.Tensor = self._scale(self._st_forward(self.s_b, z_a, sg_feat, map_feat))  # (B, T, 1)
+        t_b:torch.Tensor = self._st_forward(self.t_b, z_a, sg_feat, map_feat)  # (B, T, 1)
         z_b:torch.Tensor = z_b * torch.exp(s_b) + t_b
 
         # calc log det (sum over the 1-dim)
@@ -185,13 +235,13 @@ class CouplingBlock(nn.Module):
         z_b:torch.Tensor = z[:, :, 1:2]  # (B, T, 1)
     
         # Reverse order: first undo z_b transform (using z_a which wasn't changed yet in inverse)
-        s_b:torch.Tensor = self._scale(self.s_b(z_a, sg_feat, map_feat))
-        t_b:torch.Tensor = self.t_b(z_a, sg_feat, map_feat)
+        s_b:torch.Tensor = self._scale(self._st_forward(self.s_b, z_a, sg_feat, map_feat))
+        t_b:torch.Tensor = self._st_forward(self.t_b, z_a, sg_feat, map_feat)
         x_b:torch.Tensor = (z_b - t_b) * torch.exp(-s_b)
         
         # Then undo z_a transform (using recovered x_b)
-        s_a:torch.Tensor = self._scale(self.s_a(x_b, sg_feat, map_feat))
-        t_a:torch.Tensor = self.t_a(x_b, sg_feat, map_feat)
+        s_a:torch.Tensor = self._scale(self._st_forward(self.s_a, x_b, sg_feat, map_feat))
+        t_a:torch.Tensor = self._st_forward(self.t_a, x_b, sg_feat, map_feat)
         x_a:torch.Tensor = (z_a - t_a) * torch.exp(-s_a)
         
         out:torch.Tensor = torch.cat([x_a, x_b], dim=-1)  # (B, T, 2)

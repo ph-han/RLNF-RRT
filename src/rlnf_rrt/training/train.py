@@ -207,6 +207,7 @@ def main(config: TrainConfig | None = None) -> None:
         position_embed_dim=config.position_embed_dim,
         map_embed_dim=config.map_embed_dim,
         cond_dim=config.cond_dim,
+        conditioning_mode=getattr(config, "conditioning_mode", "concat"),
     ).to(device)
     
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

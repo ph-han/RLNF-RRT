@@ -127,6 +127,7 @@ def main():
         map_embed_dim=config.map_embed_dim,
         hidden_dim=config.hidden_dim,
         s_max=config.s_max,
+        conditioning_mode=getattr(config, "conditioning_mode", "concat"),
     ).to(device)
     
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

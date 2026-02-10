@@ -5,8 +5,22 @@ from rlnf_rrt.models.condition_encoder import ConditionEncoderFiLMRawSG
 from rlnf_rrt.models.coupling_block import CouplingBlock
 
 class ConditionalFlowPlanner(nn.Module):
-    def __init__(self, num_blocks:int=4, sg_dim:int=2, map_embed_dim:int=256, cond_dim:int=128, hidden_dim:int=128, s_max:float=2.0):
+    def __init__(
+        self,
+        num_blocks:int=4,
+        sg_dim:int=2,
+        map_embed_dim:int=256,
+        cond_dim:int=128,
+        hidden_dim:int=128,
+        s_max:float=2.0,
+        position_embed_dim:int|None=None,
+        conditioning_mode:str="concat",
+    ):
         super().__init__()
+        # Keep these args for checkpoint/script compatibility.
+        _ = cond_dim
+        _ = position_embed_dim
+
         self.sg_dim = sg_dim
         self.condition_encoder:ConditionEncoderFiLMRawSG = ConditionEncoderFiLMRawSG(map_embed_dim, sg_dim)
         
@@ -14,16 +28,23 @@ class ConditionalFlowPlanner(nn.Module):
         encoded_sg_dim = sg_dim * 3 + 1
 
         self.flow_model:nn.ModuleList = nn.ModuleList([
-            CouplingBlock(sg_dim=encoded_sg_dim, map_dim=map_embed_dim, hidden_dim=hidden_dim, s_max=s_max) for _ in range(num_blocks)
+            CouplingBlock(
+                sg_dim=encoded_sg_dim,
+                map_dim=map_embed_dim,
+                hidden_dim=hidden_dim,
+                s_max=s_max,
+                conditioning_mode=conditioning_mode,
+            )
+            for _ in range(num_blocks)
         ])
 
-    def forward(self, gt_trajs:torch.Tensor, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor):
-        # cond = self.condition_encoder(map_img, start, goal)
-        # cond = cond.unsqueeze(1).expand(-1, gt_trajs.shape[1], -1)
+    def _encode_condition(self, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor, num_points:int):
+        map_feat, sg_feat = self.condition_encoder(map_img, start, goal)      # (B,map_dim), (B,7)
+        sg_feat_T = sg_feat.unsqueeze(1).expand(-1, num_points, -1)           # (B,T,7)
+        return map_feat, sg_feat_T
 
-        map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
-        T = gt_trajs.shape[1]
-        sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
+    def forward(self, gt_trajs:torch.Tensor, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor):
+        map_feat, sg_feat_T = self._encode_condition(map_img, start, goal, gt_trajs.shape[1])
 
         x = gt_trajs
         log_det = torch.zeros(gt_trajs.shape[0], device=gt_trajs.device)
@@ -34,16 +55,27 @@ class ConditionalFlowPlanner(nn.Module):
             x = x[..., [1, 0]] # permutation
         return x, log_det
 
-    def sample(self, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor, num_samples:int=1000):
-        map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
-        T = gt_trajs.shape[1]
-        sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
+    def sample(
+        self,
+        map_img:torch.Tensor,
+        start:torch.Tensor,
+        goal:torch.Tensor,
+        num_samples:int=1000,
+        epsilon_uniform:float=0.0,
+    ):
+        map_feat, sg_feat_T = self._encode_condition(map_img, start, goal, num_samples)
 
         batch_size = map_img.shape[0]
         z = torch.randn(batch_size, num_samples, self.sg_dim, device=map_img.device)
         for block in reversed(self.flow_model):
             z = z[..., [1, 0]] # permutation
             z = block.inverse(z, sg_feat_T, map_feat)
+
+        if epsilon_uniform > 0.0:
+            if not (0.0 <= epsilon_uniform <= 1.0):
+                raise ValueError(f"epsilon_uniform must be in [0, 1], got {epsilon_uniform}")
+            mask = (torch.rand(batch_size, num_samples, 1, device=z.device) < epsilon_uniform)
+            z = torch.where(mask, torch.rand_like(z), z)
 
         return z
     
@@ -54,9 +86,7 @@ class ConditionalFlowPlanner(nn.Module):
             intermediates: List of (num_blocks + 1) tensors, each of shape (batch_size, num_samples, 2)
                           [z0, z1, z2, ..., x_final]
         """
-        map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
-        T = gt_trajs.shape[1]
-        sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
+        map_feat, sg_feat_T = self._encode_condition(map_img, start, goal, num_samples)
 
         batch_size = map_img.shape[0]
         z = torch.randn(batch_size, num_samples, self.sg_dim, device=map_img.device)
@@ -85,10 +115,7 @@ class ConditionalFlowPlanner(nn.Module):
             intermediates: List of (num_blocks + 1) tensors, each of shape (batch_size, seq_len, 2)
                           [x_data, x1, x2, ..., x_final(z)]
         """
-        map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
-        T = gt_trajs.shape[1]
-        sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
-        cond = torch.cat([map_feat, sg_feat_T], dim=-1)  # (B, T, cond_dim)
+        map_feat, sg_feat_T = self._encode_condition(map_img, start, goal, gt_trajs.shape[1])
 
         x = gt_trajs
         

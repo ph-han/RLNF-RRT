@@ -1,9 +1,6 @@
 import torch
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-import numpy as np
 from rlnf_rrt.data_pipeline.dataset import RLNFDataset
-from rlnf_rrt.models.condition_encoder import ConditionEncoder
 from rlnf_rrt.models.conditional_flow_planner import ConditionalFlowPlanner
 from rlnf_rrt.training.config import TrainConfig
 
@@ -21,12 +18,13 @@ def verify_condition_sensitivity():
     # Re-create model structure (TrajFlowPlanner as used in v3 training)
     # Check args in train_flow.py used for v3:
     # default args: num_blocks=4, map_embed_dim=256, cond_dim=128, hidden_dim=128
+    cfg = TrainConfig()
     full_model = ConditionalFlowPlanner(
-        num_blocks=TrainConfig.num_blocks,
-        map_embed_dim=TrainConfig.map_embed_dim,
-        position_embed_dim=TrainConfig.position_embed_dim,
-        cond_dim=TrainConfig.cond_dim,
-        hidden_dim=TrainConfig.hidden_dim
+        num_blocks=cfg.num_blocks,
+        map_embed_dim=cfg.map_embed_dim,
+        hidden_dim=cfg.hidden_dim,
+        s_max=cfg.s_max,
+        sg_dim=cfg.sg_dim,
     )
     
     checkpoint_path = "result/models/v6_2_best_model.pt"
@@ -54,18 +52,21 @@ def verify_condition_sensitivity():
         print(f"Goal Base: {goal_base}")
         
         # Case A: Reference (Base)
-        cond_base = model(map_base, start_base, goal_base)
+        map_base_feat, sg_base_feat = model(map_base, start_base, goal_base)
+        cond_base = torch.cat([map_base_feat, sg_base_feat], dim=-1)
         print(f"\nMap Embed Base (First 5): {map_embeddings[-1][0, :5].detach()}") # Last captured embed
         print(f"Cond Base Vector (First 10): {cond_base[0, :10]}")
         print(f"Cond Base Stats: min={cond_base.min().item():.4f}, max={cond_base.max().item():.4f}, std={cond_base.std().item():.4f}")
 
         # Case B: Change Start Position (Slightly)
         start_mod = start_base + 0.5  # Move start point Significantly
-        cond_start_mod = model(map_base, start_mod, goal_base)
+        map_start_feat, sg_start_feat = model(map_base, start_mod, goal_base)
+        cond_start_mod = torch.cat([map_start_feat, sg_start_feat], dim=-1)
         
         # Case C: Change Goal Position (Slightly)
         goal_mod = goal_base + 0.5  # Move goal point Significantly
-        cond_goal_mod = model(map_base, start_base, goal_mod)
+        map_goal_feat, sg_goal_feat = model(map_base, start_base, goal_mod)
+        cond_goal_mod = torch.cat([map_goal_feat, sg_goal_feat], dim=-1)
 
         # Case D: Totally Different Map (Next Sample)
         sample2 = None
@@ -86,7 +87,8 @@ def verify_condition_sensitivity():
             map_diff = sample2["map"].unsqueeze(0)
 
         print(f"\nMap Diff Stats: min={map_diff.min().item():.4f}, max={map_diff.max().item():.4f}")
-        cond_map_diff = model(map_diff, start_base, goal_base)
+        map_diff_feat, sg_diff_feat = model(map_diff, start_base, goal_base)
+        cond_map_diff = torch.cat([map_diff_feat, sg_diff_feat], dim=-1)
         print(f"Cond Map Diff Vector (First 10): {cond_map_diff[0, :10]}")
 
         # Compute Cosine Similarities
