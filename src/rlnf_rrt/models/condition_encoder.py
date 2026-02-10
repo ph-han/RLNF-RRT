@@ -58,6 +58,8 @@ class ConditionEncoder(nn.Module):
             nn.ReLU(),
             nn.Linear(512, cond_dim)
         )
+        # Dropout to prevent over-reliance on start/goal
+        self.dropout = nn.Dropout(p=0.4)
     
     def forward(self, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor):
         # map_img: (B, 1, 64, 64)
@@ -65,6 +67,10 @@ class ConditionEncoder(nn.Module):
         
         start_feat = self.start_encoder(start)
         goal_feat = self.goal_encoder(goal)
+
+        # Apply Dropout to force map usage
+        start_feat = self.dropout(start_feat)
+        goal_feat = self.dropout(goal_feat)
 
         # fuse
         combined = torch.cat([map_feat, start_feat, goal_feat], dim=1)
