@@ -9,9 +9,12 @@ class ConditionalFlowPlanner(nn.Module):
         super().__init__()
         self.sg_dim = sg_dim
         self.condition_encoder:ConditionEncoderFiLMRawSG = ConditionEncoderFiLMRawSG(map_embed_dim, sg_dim)
+        
+        # ConditionEncoderFiLMRawSG outputs: start(d) + goal(d) + diff(d) + dist(1) = 3*d + 1
+        encoded_sg_dim = sg_dim * 3 + 1
 
         self.flow_model:nn.ModuleList = nn.ModuleList([
-            CouplingBlock(cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max) for _ in range(num_blocks)
+            CouplingBlock(sg_dim=encoded_sg_dim, map_dim=map_embed_dim, hidden_dim=hidden_dim, s_max=s_max) for _ in range(num_blocks)
         ])
 
     def forward(self, gt_trajs:torch.Tensor, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor):
@@ -19,6 +22,7 @@ class ConditionalFlowPlanner(nn.Module):
         # cond = cond.unsqueeze(1).expand(-1, gt_trajs.shape[1], -1)
 
         map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
+        T = gt_trajs.shape[1]
         sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
 
         x = gt_trajs
@@ -32,6 +36,7 @@ class ConditionalFlowPlanner(nn.Module):
 
     def sample(self, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor, num_samples:int=1000):
         map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
+        T = gt_trajs.shape[1]
         sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
 
         batch_size = map_img.shape[0]
@@ -50,6 +55,7 @@ class ConditionalFlowPlanner(nn.Module):
                           [z0, z1, z2, ..., x_final]
         """
         map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
+        T = gt_trajs.shape[1]
         sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
 
         batch_size = map_img.shape[0]
@@ -80,6 +86,7 @@ class ConditionalFlowPlanner(nn.Module):
                           [x_data, x1, x2, ..., x_final(z)]
         """
         map_feat, sg_feat = self.condition_encoder(map_img, start, goal)  # (B,map_dim), (B,7)
+        T = gt_trajs.shape[1]
         sg_feat_T = sg_feat.unsqueeze(1).repeat(1, T, 1)                  # (B,T,7)
         cond = torch.cat([map_feat, sg_feat_T], dim=-1)  # (B, T, cond_dim)
 
