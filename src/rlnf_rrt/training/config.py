@@ -15,7 +15,7 @@ class TrainConfig:
     cond_dim: int = 128
     hidden_dim: int = 128
     s_max: float = 2.0  # max scaling factor in coupling layer
-    position_embed_dim: int = 128
+    position_embed_dim: int = 32
     map_embed_dim: int = 256
     sg_dim: int = 2  # start/goal dimension (x, y)
     

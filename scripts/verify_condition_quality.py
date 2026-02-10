@@ -27,7 +27,7 @@ def verify_condition_sensitivity():
         hidden_dim=128
     )
     
-    checkpoint_path = "result/models/v4_best_model.pt"
+    checkpoint_path = "result/models/v5_best_model.pt"
     print(f"Loading checkpoint from {checkpoint_path}...")
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     full_model.load_state_dict(checkpoint['model_state_dict'])

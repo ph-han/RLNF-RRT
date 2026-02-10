@@ -52,14 +52,14 @@ class ConditionEncoder(nn.Module):
         self.map_encoder = ResNetMapEncoder(out_dim=map_embed_dim)
         
         self.start_encoder = nn.Sequential(
-            nn.Linear(sg_dim, position_embed_dim),
+            nn.Linear(sg_dim, 64),
             nn.ReLU(),
-            nn.Linear(position_embed_dim, position_embed_dim)
+            nn.Linear(64, position_embed_dim)
         )
         self.goal_encoder = nn.Sequential(
-            nn.Linear(sg_dim, position_embed_dim),
+            nn.Linear(sg_dim, 64),
             nn.ReLU(),
-            nn.Linear(position_embed_dim, position_embed_dim)
+            nn.Linear(64, position_embed_dim)
         )
 
         self.fusion = nn.Sequential(
@@ -68,20 +68,13 @@ class ConditionEncoder(nn.Module):
             nn.ReLU(),
             nn.Linear(512, cond_dim)
         )
-        # Dropout to prevent over-reliance on start/goal
-        self.dropout = nn.Dropout(p=0.4)
-    
     def forward(self, map_img:torch.Tensor, start:torch.Tensor, goal:torch.Tensor):
-        # map_img: (B, 1, 64, 64)
+        # map_img: (B, 1, 224, 224)
         map_feat = self.map_encoder(map_img) # (B, map_embed_dim)
         
         start_feat = self.start_encoder(start)
         goal_feat = self.goal_encoder(goal)
 
-        # Apply Dropout to force map usage
-        start_feat = self.dropout(start_feat)
-        goal_feat = self.dropout(goal_feat)
-
-        # fuse
+        # fuse (B, map_embed_dim + 2 * position_embed_dim)
         combined = torch.cat([map_feat, start_feat, goal_feat], dim=1)
         return self.fusion(combined)
