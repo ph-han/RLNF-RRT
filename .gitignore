@@ -11,6 +11,6 @@ wheels/
 
 data/train
 data/test
-data/valid
+data/val
 
 logs/
