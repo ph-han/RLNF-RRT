@@ -1,0 +1,15 @@
+[data]
+data_root = "data"
+split = "test"
+num_points = 128
+clearance = 2
+step_size = 1
+
+[eval]
+checkpoint = "outputs/checkpoints/flow_20260211_173118/best.pt"
+batch_size = 64
+num_workers = 4
+pin_memory = true
+num_samples_per_condition = 5
+save_predictions = true
+prediction_dir = "outputs/predictions"
