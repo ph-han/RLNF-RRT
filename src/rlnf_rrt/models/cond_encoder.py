@@ -27,10 +27,10 @@ class MapEncoder(nn.Module):
 
 
 class CondEncoder(nn.Module):
-    def __init__(self, sg_dim: int = 2, latent_dim: int = 128, channels=(32, 48, 64, 96, 128), norm: str = "bn"):
+    def __init__(self, sg_dim: int = 2, latent_dim: int = 128, channels=(32, 48, 64, 96, 128)):
         super().__init__()
 
-        self.map_encoder = MapEncoder(latent_dim, channels, norm)
+        self.map_encoder = MapEncoder(latent_dim, channels)
 
         self.sg_dim = sg_dim
 
