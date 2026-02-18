@@ -6,7 +6,7 @@ data_root = "data"
 num_points = 128
 clearance = 2
 step_size = 1
-noise_std = 0.01
+noise_std = 0.0
 
 [model]
 num_blocks = 4
@@ -14,10 +14,9 @@ latent_dim = 128
 hidden_dim = 128
 s_max = 1.5
 channels = [32, 48, 64, 96, 128]
-norm = "bn"
 
 [train]
-epochs = 50
+epochs = 1500
 batch_size = 64
 num_workers = 4
 lr = 0.001

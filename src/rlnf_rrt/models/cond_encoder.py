@@ -9,10 +9,10 @@ class MapEncoder(nn.Module):
         for out_ch in channels:
             layers += [
                 nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1, bias=False),
-                nn.BatchNorm2d(out_ch),
+                nn.GroupNorm(4, out_ch),
                 nn.SiLU(),
                 nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1, bias=False),
-                nn.BatchNorm2d(out_ch),
+                nn.GroupNorm(4, out_ch),
                 nn.SiLU(),
             ]
             in_ch = out_ch

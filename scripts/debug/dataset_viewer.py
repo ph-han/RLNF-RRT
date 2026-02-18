@@ -11,6 +11,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from rlnf_rrt.data.dataset import RLNFDataset
 
 
+def _to_pixel_coords(points_xy: np.ndarray, h: int, w: int) -> tuple[np.ndarray, np.ndarray]:
+    points_xy = np.asarray(points_xy, dtype=np.float32).reshape(-1, 2)
+    if points_xy.size == 0:
+        return np.empty((0,), dtype=np.int32), np.empty((0,), dtype=np.int32)
+
+    if float(points_xy.max()) > 1.0 or float(points_xy.min()) < 0.0:
+        points_xy = points_xy.copy()
+        points_xy[:, 0] = points_xy[:, 0] / max(1, (w - 1))
+        points_xy[:, 1] = points_xy[:, 1] / max(1, (h - 1))
+
+    px = np.clip(points_xy[:, 0] * (w - 1), 0, w - 1).astype(np.int32)
+    py = np.clip(points_xy[:, 1] * (h - 1), 0, h - 1).astype(np.int32)
+    return px, py
+
+
 def draw_sample(sample: dict[str, np.ndarray | object], idx: int, total: int) -> np.ndarray:
     map_tensor = sample["map"]
     start_tensor = sample["start"]
@@ -24,10 +39,8 @@ def draw_sample(sample: dict[str, np.ndarray | object], idx: int, total: int) ->
 
     h, w = map_np.shape
     canvas = cv2.cvtColor((map_np * 255.0).astype(np.uint8), cv2.COLOR_GRAY2BGR)
-
     if len(path) > 0:
-        px = np.clip(path[:, 0] * (w - 1), 0, w - 1).astype(np.int32)
-        py = np.clip(path[:, 1] * (h - 1), 0, h - 1).astype(np.int32)
+        px, py = _to_pixel_coords(path, h, w)
 
         overlay = canvas.copy()
         for x, y in zip(px, py):
@@ -41,8 +54,8 @@ def draw_sample(sample: dict[str, np.ndarray | object], idx: int, total: int) ->
     cv2.circle(canvas, (sx, sy), 3, (0, 0, 255), -1)
     cv2.circle(canvas, (gx, gy), 3, (255, 0, 0), -1)
 
-    info1 = f"idx: {idx}/{total - 1}   map: {h}x{w}   path_points: {len(path)}"
-    info2 = "keys: n/right=next, p/left=prev, j=jump, s=save, q/esc=quit"
+    info1 = f"idx: {idx}/{total - 1}   map: {h}x{w}   gt_path: {len(path)}"
+    info2 = "yellow=gt_path   keys: n/right=next, p/left=prev, j=jump, q/esc=quit"
     cv2.putText(canvas, info1, (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (50, 220, 255), 1, cv2.LINE_AA)
     cv2.putText(canvas, info2, (8, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (50, 220, 255), 1, cv2.LINE_AA)
     return canvas
@@ -77,23 +90,27 @@ def main() -> None:
     cv2.resizeWindow(window_name, args.window_size, args.window_size)
 
     print("Viewer started.")
-    print("Controls: n/right(next), p/left(prev), j(jump), s(save), q/esc(quit)")
+    print("Controls: n/right(next), p/left(prev), j(jump), q/esc(quit)")
+
+    right_keys = {83, 2555904, 65363, 63235}
+    left_keys = {81, 2424832, 65361, 63234}
 
     while True:
         sample = dataset[idx]
         frame = draw_sample(sample, idx, len(dataset))
         cv2.imshow(window_name, frame)
-        key = cv2.waitKey(0) & 0xFF
+        key_ex = cv2.waitKeyEx(0)
+        key = key_ex & 0xFF
 
-        if key in (ord("q"), 27):
+        if key in (ord("q"), ord("Q"), 27):
             break
-        if key in (ord("n"), 83):  # right arrow
+        if key in (ord("n"), ord("N")) or key_ex in right_keys:
             idx = (idx + 1) % len(dataset)
             continue
-        if key in (ord("p"), 81):  # left arrow
+        if key in (ord("p"), ord("P")) or key_ex in left_keys:
             idx = (idx - 1 + len(dataset)) % len(dataset)
             continue
-        if key == ord("j"):
+        if key in (ord("j"), ord("J")):
             raw = input(f"Jump to index (0~{len(dataset)-1}): ").strip()
             if raw.isdigit():
                 idx = max(0, min(int(raw), len(dataset) - 1))

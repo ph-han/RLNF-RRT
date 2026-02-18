@@ -100,6 +100,5 @@ class RLNFDataset(Dataset):
             "map": torch.from_numpy(map_data).float().unsqueeze(0),  # (1, H, W)
             "start": torch.from_numpy(start).float(),  # (2,)
             "goal": torch.from_numpy(goal).float(),  # (2,)
-            "condition": torch.from_numpy(np.concatenate([start, goal], axis=0)).float(),  # (4,)
             "gt_path": torch.from_numpy(gt_path).float(),  # (N, 2)
         }
