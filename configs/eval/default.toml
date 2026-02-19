@@ -6,7 +6,7 @@ clearance = 2
 step_size = 1
 
 [eval]
-checkpoint = "outputs/checkpoints/flow_20260218_232139/last.pt"
+checkpoint = "outputs/checkpoints/flow_20260219_132759/best.pt"
 batch_size = 64
 num_workers = 4
 pin_memory = true

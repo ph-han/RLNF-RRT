@@ -1,3 +1,4 @@
+from numpy import block
 import torch
 import torch.nn as nn
 
@@ -35,24 +36,24 @@ class Flow(nn.Module):
         ])
 
     def forward(self, binary_map: torch.Tensor, start: torch.Tensor, goal: torch.Tensor, x: torch.Tensor):
-        w, sg = self.cond_encoder(binary_map, start, goal)
+        local_feat, global_feat = self.cond_encoder(binary_map, start, goal)
         
         tot_log_det = torch.zeros(x.shape[0], device=x.device)
         z = x
-        for flow in self.flows:
-            z, log_det = flow(z, w, sg)
+        for block in self.flows:
+            z, log_det = block(z, local_feat, global_feat)
             tot_log_det += log_det
 
         return z, tot_log_det
     
     @torch.no_grad()
     def inverse(self, map_img: torch.Tensor, start: torch.Tensor, goal: torch.Tensor, z: torch.Tensor):
-        w, sg = self.cond_encoder(map_img, start, goal)
+        local_feat, global_feat = self.cond_encoder(map_img, start, goal)
 
         tot_log_det = z.new_zeros(z.shape[0])
         x = z
         for block in reversed(self.flows):
-            x, log_det = block.inverse(x, w, sg)
+            x, log_det = block.inverse(x, local_feat, global_feat)
             tot_log_det += log_det
         return x, tot_log_det
 
