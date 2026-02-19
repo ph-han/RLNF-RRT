@@ -10,4 +10,4 @@ uv run python scripts/data/generate_2d.py \
   --num-points 256 \
   --clearance 2 \
   --step-size 1 \
-  --seed 42
+  --seed 43

@@ -33,8 +33,7 @@ def _build_model_from_ckpt(ckpt: dict, device: torch.device) -> Flow:
         latent_dim=int(m["latent_dim"]),
         hidden_dim=int(m["hidden_dim"]),
         s_max=float(m["s_max"]),
-        channels=tuple(int(x) for x in m["channels"]),
-        norm=str(m["norm"]),
+        channels=tuple(int(x) for x in m["channels"])
     ).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()

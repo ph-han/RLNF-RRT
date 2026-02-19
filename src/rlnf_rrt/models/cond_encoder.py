@@ -43,7 +43,7 @@ class MapEncoder(nn.Module):
             nn.Linear(latent_dim, latent_dim)
         )
 
-    def forward(self, binary_map: torch.Tensor) -> torch.Tensor:
+    def forward(self, binary_map: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         bmap = add_coords(binary_map)  # (B, 3, H, W)
         w_spatial = self.backbone(bmap)
 
@@ -60,6 +60,6 @@ class CondEncoder(nn.Module):
 
         self.sg_dim = sg_dim
 
-    def forward(self, map: torch.Tensor, start: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
+    def forward(self, map: torch.Tensor, start: torch.Tensor, goal: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         w_spatial, w_global = self.map_encoder(map)
         return w_spatial, torch.cat([w_global, start, goal], dim=-1)

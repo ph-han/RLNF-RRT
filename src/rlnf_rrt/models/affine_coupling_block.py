@@ -20,6 +20,13 @@ class STNet(nn.Module):
             nn.SiLU(),
             nn.Linear(hidden_dim, out_dim),
         )
+        
+        last = self.net[-1]
+        if isinstance(last, nn.Linear):
+            if last.bias is not None:
+                nn.init.zeros_(last.bias)
+            if last.weight is not None:
+                nn.init.zeros_(last.weight)
 
     def forward(self, z_keep: torch.Tensor, feat_map: torch.Tensor, cond_vec: torch.Tensor, current_z: torch.Tensor):
         grid = current_z.unsqueeze(2) * 2 - 1  # (B,T,2) -> (B,T,2) in range [-1,1]
@@ -39,7 +46,7 @@ class AffineCouplingBlock(nn.Module):
         self.s_b = STNet(z_keep_dim=1, feat_ch=feat_ch, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max)
         self.t_a = STNet(z_keep_dim=1, feat_ch=feat_ch, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max)
         self.t_b = STNet(z_keep_dim=1, feat_ch=feat_ch, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max)
-    
+
     def forward(self, x: torch.Tensor, w: torch.Tensor, cond: torch.Tensor):
 
         z_a = x[:, :, 0:1]  # (B,T,1) -> x

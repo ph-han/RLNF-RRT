@@ -12,13 +12,13 @@ noise_std = 0.0
 num_blocks = 4
 latent_dim = 128
 hidden_dim = 128
-s_max = 1.5
+s_max = 0.5
 channels = [32, 48, 64, 96, 128]
 
 [train]
 epochs = 1500
-batch_size = 64
-num_workers = 4
+batch_size = 128
+num_workers = 6
 lr = 0.001
 weight_decay = 0.00001
 grad_clip_norm = 1.0
