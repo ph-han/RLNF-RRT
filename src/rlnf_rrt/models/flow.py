@@ -1,4 +1,3 @@
-from numpy import block
 import torch
 import torch.nn as nn
 
@@ -25,9 +24,10 @@ class Flow(nn.Module):
             channels=channels
         )
         self.cond_dim = latent_dim + 2 * sg_dim
+        feat_ch = self.cond_encoder.feat_ch
         self.flows = nn.ModuleList([
             AffineCouplingBlock(
-                feat_ch=channels[-1],
+                feat_ch=feat_ch,
                 cond_dim=self.cond_dim,
                 hidden_dim=hidden_dim,
                 s_max=s_max
