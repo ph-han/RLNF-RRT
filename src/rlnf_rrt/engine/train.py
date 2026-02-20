@@ -38,7 +38,7 @@ def _run_epoch(
         if max_steps is not None and i > max_steps:
             break
 
-        map_img = batch["map"].to(device, non_blocking=True)
+        cond_image = batch["cond_image"].to(device, non_blocking=True)
         start = batch["start"].to(device, non_blocking=True)
         goal = batch["goal"].to(device, non_blocking=True)
         gt_path = batch["gt_path"].to(device, non_blocking=True)
@@ -47,7 +47,7 @@ def _run_epoch(
             optimizer.zero_grad(set_to_none=True)
 
         with torch.set_grad_enabled(is_train):
-            z, log_det = model(map_img, start, goal, gt_path)
+            z, log_det = model(cond_image, start, goal, gt_path)
             loss = _nll_loss(z, log_det)
 
             if is_train:

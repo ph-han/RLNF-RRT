@@ -96,7 +96,35 @@ class RLNFDataset(Dataset):
             noise = np.random.normal(0.0, self.noise_std, gt_path.shape).astype(np.float32)
             gt_path = np.clip(gt_path + noise, 0.0, 1.0)
 
+        import scipy.ndimage as ndi
+        
+        # Build 3-channel input: 
+        # channel 0: binary map
+        # channel 1: start/goal channel (start +1, goal -1)
+        # channel 2: signed distance field (sdf)
+        
+        map_np = (map_data > 0.5).astype(np.uint8)
+        norm = float(max(h, w))
+        
+        free = map_np.astype(bool)
+        obstacle = ~free
+        dist_to_obstacle = ndi.distance_transform_edt(free)
+        dist_to_free = ndi.distance_transform_edt(obstacle)
+        sdf = (dist_to_obstacle - dist_to_free) / max(norm, 1.0)
+        sdf = np.clip(sdf, -1.0, 1.0).astype(np.float32)
+        
+        sg_channel = np.zeros((h, w), dtype=np.float32)
+        sx = int(np.clip(round(start[0] * (w - 1)), 0, w - 1))
+        sy = int(np.clip(round(start[1] * (h - 1)), 0, h - 1))
+        gx = int(np.clip(round(goal[0] * (w - 1)), 0, w - 1))
+        gy = int(np.clip(round(goal[1] * (h - 1)), 0, h - 1))
+        sg_channel[sy, sx] = 1.0
+        sg_channel[gy, gx] = -1.0
+        
+        cond_image = np.stack([map_data, sg_channel, sdf], axis=0)
+
         return {
+            "cond_image": torch.from_numpy(cond_image).float(),  # (3, H, W)
             "map": torch.from_numpy(map_data).float().unsqueeze(0),  # (1, H, W)
             "start": torch.from_numpy(start).float(),  # (2,)
             "goal": torch.from_numpy(goal).float(),  # (2,)

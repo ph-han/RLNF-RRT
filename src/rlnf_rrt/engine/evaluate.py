@@ -92,12 +92,12 @@ def evaluate(config_path: str | Path = "configs/eval/default.toml") -> None:
     pbar = tqdm(loader, desc=f"eval:{split}", leave=False)
     with torch.no_grad():
         for batch in pbar:
-            map_img = batch["map"].to(device, non_blocking=True)
+            cond_image = batch["cond_image"].to(device, non_blocking=True)
             start = batch["start"].to(device, non_blocking=True)
             goal = batch["goal"].to(device, non_blocking=True)
             gt_path = batch["gt_path"].to(device, non_blocking=True)
 
-            z_gt, log_det = model(map_img, start, goal, gt_path)
+            z_gt, log_det = model(cond_image, start, goal, gt_path)
             loss = _nll_loss(z_gt, log_det)
 
             bsz = gt_path.size(0)
@@ -112,7 +112,7 @@ def evaluate(config_path: str | Path = "configs/eval/default.toml") -> None:
             T = gt_path.size(1)
             for s in range(num_samples):
                 z = torch.randn((bsz, T, 2), device=device, dtype=gt_path.dtype)
-                pred_path, _ = model.inverse(map_img, start, goal, z)
+                pred_path, _ = model.inverse(cond_image, start, goal, z)
                 pred_path = pred_path.clamp(0.0, 1.0).cpu().numpy().astype(np.float32)
 
                 for i in range(bsz):

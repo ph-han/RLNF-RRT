@@ -4,7 +4,8 @@ import argparse
 from pathlib import Path
 import sys
 
-import cv2
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -39,59 +40,6 @@ def _load_sample_predictions(pred_dir: Path, ds_idx: int) -> list[np.ndarray]:
     return preds
 
 
-def _to_pixels(path_xy: np.ndarray, w: int, h: int) -> tuple[np.ndarray, np.ndarray]:
-    if len(path_xy) == 0:
-        return np.array([], dtype=np.int32), np.array([], dtype=np.int32)
-    px = np.clip(path_xy[:, 0] * (w - 1), 0, w - 1).astype(np.int32)
-    py = np.clip(path_xy[:, 1] * (h - 1), 0, h - 1).astype(np.int32)
-    return px, py
-
-
-def _draw(sample: dict, preds: list[np.ndarray], idx: int, total: int, pred_dir: Path) -> np.ndarray:
-    map_np = sample["map"].squeeze(0).numpy()
-    start = sample["start"].numpy()
-    goal = sample["goal"].numpy()
-    gt = sample["gt_path"].numpy()
-
-    h, w = map_np.shape
-    canvas = cv2.cvtColor((map_np * 255.0).astype(np.uint8), cv2.COLOR_GRAY2BGR)
-
-    gt_x, gt_y = _to_pixels(gt, w, h)
-    if len(gt_x) > 0:
-        for x, y in zip(gt_x, gt_y):
-            cv2.circle(canvas, (int(x), int(y)), 1, (0, 255, 255), -1)  # yellow GT
-
-    pred_colors = [
-        (0, 200, 0),
-        (255, 120, 0),
-        (200, 0, 200),
-        (0, 180, 255),
-        (100, 255, 100),
-    ]
-    for s, pred in enumerate(preds):
-        px, py = _to_pixels(pred, w, h)
-        color = pred_colors[s % len(pred_colors)]
-        for x, y in zip(px, py):
-            cv2.circle(canvas, (int(x), int(y)), 1, color, -1)
-
-    sx = int(np.clip(start[0] * (w - 1), 0, w - 1))
-    sy = int(np.clip(start[1] * (h - 1), 0, h - 1))
-    gx = int(np.clip(goal[0] * (w - 1), 0, w - 1))
-    gy = int(np.clip(goal[1] * (h - 1), 0, h - 1))
-    cv2.circle(canvas, (sx, sy), 4, (0, 0, 255), -1)
-    cv2.circle(canvas, (gx, gy), 4, (255, 0, 0), -1)
-
-    info1 = f"idx: {idx}/{total - 1}  preds: {len(preds)}  map: {h}x{w}"
-    info2 = "GT=yellow, Start=red, Goal=blue, Pred=multi-color"
-    info3 = f"pred_dir: {pred_dir.name}"
-    info4 = "keys: n/right next, p/left prev, j jump, q/esc quit"
-    cv2.putText(canvas, info1, (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (50, 220, 255), 1, cv2.LINE_AA)
-    cv2.putText(canvas, info2, (8, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (50, 220, 255), 1, cv2.LINE_AA)
-    cv2.putText(canvas, info3, (8, 54), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (50, 220, 255), 1, cv2.LINE_AA)
-    cv2.putText(canvas, info4, (8, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (50, 220, 255), 1, cv2.LINE_AA)
-    return canvas
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prediction overlay viewer")
     parser.add_argument("--eval-config", type=str, default="configs/eval/default.toml")
@@ -122,34 +70,94 @@ def main() -> None:
 
     idx = max(0, min(args.index, len(ds) - 1))
 
-    win = "RLNF Prediction Viewer"
-    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(win, args.window_size, args.window_size)
+    # Matplotlib setup for 4 subplots
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 10))
+    axes_arr = np.atleast_1d(axes).reshape(-1)
+    
+    try:
+        fig.canvas.manager.set_window_title("RLNF Prediction Viewer")
+    except Exception:
+        pass
+    
+    cmap = ListedColormap(["#3b3336", "#dfdfdf"])
 
     print(f"Prediction dir: {pred_dir}")
     print("Controls: n/right(next), p/left(prev), j(jump), q/esc(quit)")
+    
+    state = {"idx": idx}
 
-    while True:
-        sample = ds[idx]
-        preds = _load_sample_predictions(pred_dir, idx)
-        frame = _draw(sample, preds, idx, len(ds), pred_dir)
-        cv2.imshow(win, frame)
+    def draw_page() -> None:
+        current_idx = state["idx"]
+        fig.suptitle(f"Prediction Viewer - Index {current_idx} to {current_idx + 3} / {len(ds) - 1}", fontsize=16)
 
-        key = cv2.waitKey(0) & 0xFF
-        if key in (ord("q"), 27):
-            break
-        if key in (ord("n"), 83):
-            idx = (idx + 1) % len(ds)
-            continue
-        if key in (ord("p"), 81):
-            idx = (idx - 1 + len(ds)) % len(ds)
-            continue
-        if key == ord("j"):
+        for ax_i, ax in enumerate(axes_arr):
+            ax.clear()
+            ds_idx = current_idx + ax_i
+
+            if ds_idx >= len(ds):
+                ax.axis("off")
+                continue
+
+            ax.axis("on")
+            sample = ds[ds_idx]
+            
+            map_np = sample["map"].squeeze(0).numpy()
+            start = sample["start"].numpy()
+            goal = sample["goal"].numpy()
+            gt = sample["gt_path"].numpy()
+
+            preds = _load_sample_predictions(pred_dir, ds_idx)
+
+            ax.imshow(map_np, cmap=cmap, vmin=0.0, vmax=1.0, origin="lower", extent=(0, 1, 0, 1), interpolation="nearest")
+
+            if len(gt) > 0:
+                ax.scatter(gt[:, 0], gt[:, 1], s=10, c="#18a71e", alpha=0.65, label="GT Path", edgecolors="none")
+
+            if preds:
+                pred_all = np.concatenate(preds, axis=0)
+                ax.scatter(
+                    pred_all[:, 0],
+                    pred_all[:, 1],
+                    s=12,
+                    c="#1a2cff",
+                    alpha=0.45,
+                    label=f"Samples (n={len(preds)})",
+                    edgecolors="none",
+                )
+
+            ax.scatter([start[0]], [start[1]], s=220, c="red", label="Start", edgecolors="none", zorder=3)
+            ax.scatter([goal[0]], [goal[1]], s=220, c="lime", label="Goal", edgecolors="none", zorder=3)
+
+            ax.set_title(f"Example {ds_idx}", fontsize=14, fontweight="bold")
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.set_aspect("equal", adjustable="box")
+            ax.tick_params(axis="both", labelsize=10)
+            
+            if ax_i == 0:
+                ax.legend(loc="upper right", frameon=True, framealpha=0.9, fontsize=10)
+
+        fig.tight_layout()
+        fig.canvas.draw_idle()
+
+    def on_key(event) -> None:
+        if event.key in ("n", "right", "down"):
+            state["idx"] = min(len(ds) - 1, state["idx"] + 4)
+            draw_page()
+        elif event.key in ("p", "left", "up"):
+            state["idx"] = max(0, state["idx"] - 4)
+            draw_page()
+        elif event.key == "j":
             raw = input(f"Jump to index (0~{len(ds)-1}): ").strip()
             if raw.isdigit():
-                idx = max(0, min(int(raw), len(ds) - 1))
+                state["idx"] = max(0, min(int(raw), len(ds) - 1))
+                draw_page()
+        elif event.key in ("q", "escape"):
+            plt.close(fig)
 
-    cv2.destroyAllWindows()
+    fig.canvas.mpl_connect("key_press_event", on_key)
+    draw_page()
+    plt.show()
 
 
 if __name__ == "__main__":
