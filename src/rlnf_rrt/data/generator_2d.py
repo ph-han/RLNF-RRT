@@ -31,6 +31,65 @@ def generate_2d_grid_map(width: int, height: int) -> np.ndarray:
     return grid_map
 
 
+def generate_2d_grid_map_circle_hard(
+    width: int,
+    height: int,
+    min_circles: int = 28,
+    max_circles: int = 64,
+    min_radius: int = 5,
+    max_radius: int = 20,
+) -> np.ndarray:
+    grid_map: np.ndarray = np.ones((height, width), dtype=np.uint8)
+
+    grid_map[0, :] = 0
+    grid_map[-1, :] = 0
+    grid_map[:, 0] = 0
+    grid_map[:, -1] = 0
+
+    num_circles = random.randint(min_circles, max_circles)
+    for _ in range(num_circles):
+        radius = random.randint(min_radius, max_radius)
+        cx = random.randint(radius + 1, width - radius - 2)
+        cy = random.randint(radius + 1, height - radius - 2)
+        cv2.circle(grid_map, (cx, cy), radius, color=0, thickness=-1)
+
+    return grid_map
+
+
+def _make_map(
+    width: int,
+    height: int,
+    map_style: str,
+    min_circles: int,
+    max_circles: int,
+    min_circle_radius: int,
+    max_circle_radius: int,
+) -> np.ndarray:
+    if map_style == "rect":
+        return generate_2d_grid_map(width, height)
+    if map_style == "circle_hard":
+        return generate_2d_grid_map_circle_hard(
+            width=width,
+            height=height,
+            min_circles=min_circles,
+            max_circles=max_circles,
+            min_radius=min_circle_radius,
+            max_radius=max_circle_radius,
+        )
+    if map_style == "mixed":
+        if random.random() < 0.5:
+            return generate_2d_grid_map(width, height)
+        return generate_2d_grid_map_circle_hard(
+            width=width,
+            height=height,
+            min_circles=min_circles,
+            max_circles=max_circles,
+            min_radius=min_circle_radius,
+            max_radius=max_circle_radius,
+        )
+    raise ValueError(f"Unknown map_style: {map_style}")
+
+
 def generate_2d_start_goal(map_info: np.ndarray, dist: float = 15.0, max_tries: int = 10_000) -> np.ndarray:
     free = np.argwhere(map_info != 0)
     if free.shape[0] < 2:
@@ -162,6 +221,11 @@ def generate_2d_dataset(
     step_size: int = 1,
     min_start_goal_dist: int = 15,
     max_start_goal_dist: int = 100,
+    map_style: str = "rect",
+    min_circles: int = 28,
+    max_circles: int = 64,
+    min_circle_radius: int = 5,
+    max_circle_radius: int = 20,
     seed: int | None = None,
 ) -> None:
     if seed is not None:
@@ -201,7 +265,15 @@ def generate_2d_dataset(
 
         data_id = 0
         for i in range(num_of_map_data):
-            grid_map = generate_2d_grid_map(width, height)
+            grid_map = _make_map(
+                width=width,
+                height=height,
+                map_style=map_style,
+                min_circles=min_circles,
+                max_circles=max_circles,
+                min_circle_radius=min_circle_radius,
+                max_circle_radius=max_circle_radius,
+            )
             map_filename = f"map2d_{i:06d}.png"
             cv2.imwrite(str(base_path / "map" / map_filename), grid_map * 255)
 
@@ -281,6 +353,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--step-size", type=int, default=1)
     parser.add_argument("--min-start-goal-dist", type=int, default=15)
     parser.add_argument("--max-start-goal-dist", type=int, default=100)
+    parser.add_argument("--map-style", type=str, default="rect", choices=["rect", "circle_hard", "mixed"])
+    parser.add_argument("--min-circles", type=int, default=28)
+    parser.add_argument("--max-circles", type=int, default=64)
+    parser.add_argument("--min-circle-radius", type=int, default=5)
+    parser.add_argument("--max-circle-radius", type=int, default=20)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--data-root", type=str, default=None)
     return parser
@@ -302,6 +379,11 @@ def main() -> None:
         step_size=args.step_size,
         min_start_goal_dist=args.min_start_goal_dist,
         max_start_goal_dist=args.max_start_goal_dist,
+        map_style=args.map_style,
+        min_circles=args.min_circles,
+        max_circles=args.max_circles,
+        min_circle_radius=args.min_circle_radius,
+        max_circle_radius=args.max_circle_radius,
         seed=args.seed,
     )
 
