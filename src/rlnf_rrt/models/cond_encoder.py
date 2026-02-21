@@ -1,12 +1,12 @@
 import torch
 from torch import nn
-from torchvision.models import resnet18
+from torchvision.models import resnet18, resnet34
 
 
 class MapEncoder(nn.Module):
     def __init__(self, latent_dim: int = 128):
         super().__init__()
-        base = resnet18(weights=None)
+        base = resnet34(weights=None)
         
         self.backbone = nn.Sequential(
             base.conv1,   # 224 -> 112
@@ -16,12 +16,12 @@ class MapEncoder(nn.Module):
             base.layer1,  # 112x112
             base.layer2,  # 56x56
             base.layer3,  # 28x28
-            # base.layer4   # 14x14 
+            base.layer4   # 14x14 
         )
         
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.proj = nn.Sequential(
-            nn.Linear(256, latent_dim),
+            nn.Linear(512, latent_dim),
             nn.SiLU(),
             nn.Linear(latent_dim, latent_dim)
         )
