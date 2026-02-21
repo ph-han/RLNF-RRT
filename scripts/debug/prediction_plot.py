@@ -125,7 +125,8 @@ def main() -> None:
         ds_idx = picked[ax_i]
         sample = ds[ds_idx]
 
-        map_np = sample["map"].squeeze(0).numpy()
+        cond_image = sample["cond_image"]
+        map_np = cond_image[0, :, :].squeeze(0).numpy()
         start = sample["start"].numpy()
         goal = sample["goal"].numpy()
         gt = sample["gt_path"].numpy()
