@@ -125,7 +125,6 @@ class RLNFDataset(Dataset):
 
         return {
             "cond_image": torch.from_numpy(cond_image).float(),  # (3, H, W)
-            "map": torch.from_numpy(map_data).float().unsqueeze(0),  # (1, H, W)
             "start": torch.from_numpy(start).float(),  # (2,)
             "goal": torch.from_numpy(goal).float(),  # (2,)
             "gt_path": torch.from_numpy(gt_path).float(),  # (N, 2)

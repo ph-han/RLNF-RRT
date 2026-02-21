@@ -16,7 +16,7 @@ class MapEncoder(nn.Module):
             base.layer1,  # 112x112
             base.layer2,  # 56x56
             base.layer3,  # 28x28
-            base.layer4   # 14x14 
+            # base.layer4   # 14x14 
         )
         
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
@@ -27,13 +27,13 @@ class MapEncoder(nn.Module):
             nn.Linear(latent_dim, latent_dim)
         )
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         w_spatial = self.backbone(x)
         
         w_global = self.global_pool(w_spatial).view(w_spatial.size(0), -1)
         w_global = self.proj(w_global) # (B, latent_dim)
         
-        return w_spatial, w_global
+        return w_global
 
 
 class CondEncoder(nn.Module):
@@ -43,6 +43,6 @@ class CondEncoder(nn.Module):
         self.feat_ch = self.map_encoder.out_channels
         self.sg_dim = sg_dim
 
-    def forward(self, cond_image: torch.Tensor, start: torch.Tensor, goal: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        w_spatial, w_global = self.map_encoder(cond_image)
-        return w_spatial, torch.cat([w_global, start, goal], dim=-1)
+    def forward(self, cond_image: torch.Tensor, start: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
+        w_global = self.map_encoder(cond_image)
+        return torch.cat([w_global, start, goal], dim=-1)

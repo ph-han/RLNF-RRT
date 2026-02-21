@@ -24,10 +24,8 @@ class Flow(nn.Module):
             channels=channels
         )
         self.cond_dim = latent_dim + 2 * sg_dim
-        feat_ch = self.cond_encoder.feat_ch
         self.flows = nn.ModuleList([
             AffineCouplingBlock(
-                feat_ch=feat_ch,
                 cond_dim=self.cond_dim,
                 hidden_dim=hidden_dim,
                 s_max=s_max
@@ -36,24 +34,24 @@ class Flow(nn.Module):
         ])
 
     def forward(self, binary_map: torch.Tensor, start: torch.Tensor, goal: torch.Tensor, x: torch.Tensor):
-        local_feat, global_feat = self.cond_encoder(binary_map, start, goal)
+        global_feat = self.cond_encoder(binary_map, start, goal)
         
         tot_log_det = torch.zeros(x.shape[0], device=x.device)
         z = x
         for block in self.flows:
-            z, log_det = block(z, local_feat, global_feat)
+            z, log_det = block(z, global_feat)
             tot_log_det += log_det
 
         return z, tot_log_det
     
     @torch.no_grad()
     def inverse(self, map_img: torch.Tensor, start: torch.Tensor, goal: torch.Tensor, z: torch.Tensor):
-        local_feat, global_feat = self.cond_encoder(map_img, start, goal)
+        global_feat = self.cond_encoder(map_img, start, goal)
 
         tot_log_det = z.new_zeros(z.shape[0])
         x = z
         for block in reversed(self.flows):
-            x, log_det = block.inverse(x, local_feat, global_feat)
+            x, log_det = block.inverse(x, global_feat)
             tot_log_det += log_det
         return x, tot_log_det
 
