@@ -6,13 +6,13 @@ data_root = "data"
 num_points = 128
 clearance = 2
 step_size = 1
-noise_std = 0.005
+noise_std = 0.0
 
 [model]
 num_blocks = 4
 latent_dim = 128
 hidden_dim = 128
-s_max = 1.0
+s_max = 0.5
 channels = [32, 48, 64, 96, 128]
 
 [train]
