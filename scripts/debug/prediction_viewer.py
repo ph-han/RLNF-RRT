@@ -14,6 +14,22 @@ from rlnf_rrt.data.dataset import RLNFDataset
 from rlnf_rrt.utils.config import load_toml, resolve_project_path
 
 
+def _resolve_prediction_dir(pred_name: str | None, pred_dir: str | None, eval_cfg: dict) -> Path:
+    if pred_dir:
+        return resolve_project_path(pred_dir)
+
+    pred_root = resolve_project_path(eval_cfg.get("prediction_dir", "outputs/predictions"))
+    if pred_name:
+        target = pred_root / pred_name
+        if not target.exists():
+            raise FileNotFoundError(f"Prediction subdirectory not found: {target}")
+        if not target.is_dir():
+            raise NotADirectoryError(f"Prediction subdirectory is not a directory: {target}")
+        return target
+
+    return _find_latest_prediction_dir(eval_cfg)
+
+
 def _find_latest_prediction_dir(eval_cfg: dict) -> Path:
     pred_root = resolve_project_path(eval_cfg.get("prediction_dir", "outputs/predictions"))
     if not pred_root.exists():
@@ -44,6 +60,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Prediction overlay viewer")
     parser.add_argument("--eval-config", type=str, default="configs/eval/default.toml")
     parser.add_argument("--pred-dir", type=str, default=None)
+    parser.add_argument("--pred-name", type=str, default=None, help="Subdirectory name under outputs/predictions")
     parser.add_argument("--index", type=int, default=0)
     parser.add_argument("--window-size", type=int, default=900)
     args = parser.parse_args()
@@ -52,7 +69,8 @@ def main() -> None:
     data_cfg = cfg["data"]
     eval_cfg = cfg["eval"]
 
-    pred_dir = resolve_project_path(args.pred_dir) if args.pred_dir else _find_latest_prediction_dir(eval_cfg)
+    pred_dir = _resolve_prediction_dir(args.pred_name, args.pred_dir, eval_cfg)
+    save_dir = resolve_project_path("outputs/figures")
     if not pred_dir.exists():
         raise FileNotFoundError(f"Prediction directory not found: {pred_dir}")
 
@@ -81,8 +99,10 @@ def main() -> None:
     
     cmap = ListedColormap(["#3b3336", "#dfdfdf"])
 
+    pred_folder_name = pred_dir.name
+
     print(f"Prediction dir: {pred_dir}")
-    print("Controls: n/right(next), p/left(prev), j(jump), q/esc(quit)")
+    print("Controls: n/right(next), p/left(prev), j(jump), s(save), q/esc(quit)")
     
     state = {"idx": idx}
 
@@ -153,6 +173,13 @@ def main() -> None:
             if raw.isdigit():
                 state["idx"] = max(0, min(int(raw), len(ds) - 1))
                 draw_page()
+        elif event.key == "s":
+            start_idx = state["idx"]
+            end_exclusive = min(len(ds), start_idx + 4)
+            save_name = f"{pred_folder_name}_example_{start_idx:02d}-{end_exclusive:02d}.png"
+            save_path = save_dir / save_name
+            fig.savefig(save_path, dpi=200, bbox_inches="tight")
+            print(f"Saved: {save_path}")
         elif event.key in ("q", "escape"):
             plt.close(fig)
 

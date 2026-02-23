@@ -4,6 +4,7 @@ set -euo pipefail
 
 uv run python scripts/data/generate_2d.py \
   --split test \
+  --split-name test_circle \
   --num-maps 300 \
   --num-start-goal 12 \
   --width 224 --height 224 \
