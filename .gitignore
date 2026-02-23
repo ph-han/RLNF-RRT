@@ -12,6 +12,9 @@ wheels/
 data/train
 data/test
 data/val
+data/train_circle
+data/test_circle
+data/val_circle
 
 logs/
 
