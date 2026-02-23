@@ -14,14 +14,14 @@ class Flow(nn.Module):
         sg_dim: int = 2,
         hidden_dim: int = 128,
         s_max: float = 1.5,
-        channels=(32, 48, 64, 96, 128)
+        backbone: str = "resnet34"
     ):
         super().__init__()
 
         self.cond_encoder = CondEncoder(
             sg_dim=sg_dim,
             latent_dim=latent_dim,
-            channels=channels
+            backbone=backbone
         )
         self.cond_dim = latent_dim + 2 * sg_dim
         self.flows = nn.ModuleList([

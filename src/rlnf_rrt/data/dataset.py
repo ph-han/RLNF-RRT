@@ -47,7 +47,7 @@ class RLNFDataset(Dataset):
         step_size: int | None = None,
         data_root: str | Path | None = None,
     ):
-        assert split in ["train", "val", "test"]
+        assert split in ["train", "val", "test", "test_circle"]
         self.split = split
         self.noise_std = float(noise_std)
         self.num_points = num_points

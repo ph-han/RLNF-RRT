@@ -227,6 +227,7 @@ def generate_2d_dataset(
     min_circle_radius: int = 5,
     max_circle_radius: int = 20,
     seed: int | None = None,
+    split_name: str | None = None,
 ) -> None:
     if seed is not None:
         random.seed(seed)
@@ -238,7 +239,8 @@ def generate_2d_dataset(
     else:
         data_root = Path(data_root)
 
-    base_path = Path(data_root) / split
+    output_split = split_name if split_name else split
+    base_path = Path(data_root) / output_split
     for sub_dir in ["map", "start_goal", "gt_path"]:
         os.makedirs(base_path / sub_dir, exist_ok=True)
 
@@ -344,6 +346,12 @@ def generate_2d_dataset(
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate 2D coordinate GT dataset for RLNF-RRT")
     parser.add_argument("--split", type=str, default="train", choices=["train", "val", "test"])
+    parser.add_argument(
+        "--split-name",
+        type=str,
+        default=None,
+        help="Optional output subdirectory name under data root (e.g., test_circle).",
+    )
     parser.add_argument("--num-maps", type=int, default=100)
     parser.add_argument("--num-start-goal", type=int, default=10)
     parser.add_argument("--width", type=int, default=224)
@@ -385,6 +393,7 @@ def main() -> None:
         min_circle_radius=args.min_circle_radius,
         max_circle_radius=args.max_circle_radius,
         seed=args.seed,
+        split_name=args.split_name,
     )
 
 

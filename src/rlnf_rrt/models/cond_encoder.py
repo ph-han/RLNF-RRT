@@ -4,9 +4,14 @@ from torchvision.models import resnet18, resnet34
 
 
 class MapEncoder(nn.Module):
-    def __init__(self, latent_dim: int = 128):
+    def __init__(self, latent_dim: int = 128, backbone="resnet34"):
         super().__init__()
-        base = resnet34(weights=None)
+        if backbone == "resnet18":
+            base = resnet18(weights=None)
+        elif backbone == "resnet34":
+            base = resnet34(weights=None)
+        else:
+            raise ValueError(f"Unknown backbone: {backbone}")
         
         self.backbone = nn.Sequential(
             base.conv1,   # 224 -> 112
@@ -36,9 +41,9 @@ class MapEncoder(nn.Module):
 
 
 class CondEncoder(nn.Module):
-    def __init__(self, sg_dim: int = 2, latent_dim: int = 128, channels=(32, 48, 64, 96, 128)):
+    def __init__(self, sg_dim: int = 2, latent_dim: int = 128, backbone="resnet34"):
         super().__init__()
-        self.map_encoder = MapEncoder(latent_dim=latent_dim)
+        self.map_encoder = MapEncoder(latent_dim=latent_dim, backbone=backbone)
         self.sg_dim = sg_dim
 
     def forward(self, cond_image: torch.Tensor, start: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:

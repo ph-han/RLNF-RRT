@@ -124,7 +124,7 @@ def train(config_path: str | Path = "configs/train/default.toml") -> None:
         latent_dim=int(model_cfg["latent_dim"]),
         hidden_dim=int(model_cfg["hidden_dim"]),
         s_max=float(model_cfg["s_max"]),
-        channels=tuple(int(x) for x in model_cfg["channels"])
+        backbone=model_cfg.get("backbone", "resnet34")
     ).to(device)
     
     optimizer = AdamW(
