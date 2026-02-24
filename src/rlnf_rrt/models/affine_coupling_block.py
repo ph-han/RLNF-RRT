@@ -5,8 +5,8 @@ class STNet(nn.Module):
     def __init__(self, z_keep_dim: int, cond_dim: int, hidden_dim: int = 128, s_max: float = 1.5):
         super().__init__()
         self.s_max = s_max
-        # Local feature is intentionally disabled; condition only on z_keep + global cond.
-        in_dim = z_keep_dim + cond_dim
+        self.pe_dim = 3  # [tau, sin(2pi*tau), cos(2pi*tau)]
+        in_dim = z_keep_dim + cond_dim + self.pe_dim
         out_dim = z_keep_dim
 
         self.net = nn.Sequential(
@@ -31,9 +31,21 @@ class STNet(nn.Module):
     def forward(self, z_keep: torch.Tensor, cond_vec: torch.Tensor):
         B, T, _ = z_keep.shape
         cond_bt = cond_vec[:, None, :].expand(B, T, -1)
-        
-        combined_cond = torch.cat([z_keep, cond_bt], dim=-1)  # (B,T,1+cond_dim)
+
+        # time positional encoding (not GT-dependent, so not cheating)
+        tau = torch.linspace(0.0, 1.0, steps=T, device=z_keep.device, dtype=z_keep.dtype).view(1, T, 1).expand(B, T, 1)
+        pe = torch.cat(
+            [
+                tau,
+                torch.sin(2.0 * torch.pi * tau),
+                torch.cos(2.0 * torch.pi * tau),
+            ],
+            dim=-1,
+        )
+
+        combined_cond = torch.cat([z_keep, cond_bt, pe], dim=-1)
         return self.net(combined_cond)
+
     
 class AffineCouplingBlock(nn.Module):
     def __init__(self, cond_dim: int, hidden_dim: int = 128, s_max: float = 1.5):
