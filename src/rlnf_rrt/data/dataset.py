@@ -11,30 +11,29 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _resample_points(path_xy: np.ndarray, target_points: int) -> np.ndarray:
+    path_xy = np.asarray(path_xy, dtype=np.float32).reshape(-1, 2)
+
+    if target_points <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
     if len(path_xy) == target_points:
-        return path_xy.astype(np.float32)
+        return path_xy.copy()
     if len(path_xy) == 0:
         return np.zeros((target_points, 2), dtype=np.float32)
     if len(path_xy) == 1:
-        return np.repeat(path_xy.astype(np.float32), target_points, axis=0)
+        return np.repeat(path_xy, target_points, axis=0)
 
-    diffs = np.diff(path_xy, axis=0)
-    seg_lens = np.linalg.norm(diffs, axis=1)
-    cum = np.concatenate(([0.0], np.cumsum(seg_lens)))
-    total = float(cum[-1])
-    if total == 0.0:
-        return np.repeat(path_xy[:1].astype(np.float32), target_points, axis=0)
+    # Distance coordinate for each original point along the polyline.
+    seg_lens = np.linalg.norm(np.diff(path_xy, axis=0), axis=1)
+    dist = np.concatenate(([0.0], np.cumsum(seg_lens))).astype(np.float32)
+    total = float(dist[-1])
+    if total <= 0.0:
+        return np.repeat(path_xy[:1], target_points, axis=0)
 
-    targets = np.linspace(0.0, total, target_points, dtype=np.float32)
-    out = np.empty((target_points, 2), dtype=np.float32)
-    for i, t in enumerate(targets):
-        j = int(np.searchsorted(cum, t, side="right") - 1)
-        j = max(0, min(j, len(seg_lens) - 1))
-        seg_start = cum[j]
-        seg_len = seg_lens[j]
-        alpha = 0.0 if seg_len == 0 else float((t - seg_start) / seg_len)
-        out[i] = path_xy[j] * (1.0 - alpha) + path_xy[j + 1] * alpha
-    return out
+    # Uniform distance targets, then interpolate x/y independently.
+    target_dist = np.linspace(0.0, total, target_points, dtype=np.float32)
+    out_x = np.interp(target_dist, dist, path_xy[:, 0]).astype(np.float32)
+    out_y = np.interp(target_dist, dist, path_xy[:, 1]).astype(np.float32)
+    return np.stack([out_x, out_y], axis=1)
 
 
 class RLNFDataset(Dataset):
@@ -83,11 +82,6 @@ class RLNFDataset(Dataset):
         start_goal[:, 1] = np.clip(start_goal[:, 1] / max(1, (h - 1)), 0.0, 1.0)
         start = start_goal[0]
         goal = start_goal[1]
-
-        # when gt trajectory is not normalized.
-        if gt_path.size > 0 and (float(gt_path.max()) > 1.0 or float(gt_path.min()) < 0.0):
-            gt_path[:, 0] = np.clip(gt_path[:, 0] / max(1, (w - 1)), 0.0, 1.0)
-            gt_path[:, 1] = np.clip(gt_path[:, 1] / max(1, (h - 1)), 0.0, 1.0)
 
         target_points = int(self.num_points) if self.num_points is not None else int(row.get("num_points", len(gt_path)))
         gt_path = _resample_points(gt_path, target_points)
