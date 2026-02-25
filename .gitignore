@@ -15,6 +15,7 @@ data/val
 data/train_circle
 data/test_circle
 data/val_circle
+data/**
 
 logs/
 
