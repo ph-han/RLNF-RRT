@@ -1,6 +1,6 @@
 [data]
 data_root = "data"
-split = "test_circle"
+split = "test"
 num_points = 128
 clearance = 2
 step_size = 1
@@ -14,3 +14,12 @@ pin_memory = true
 num_samples_per_condition = 4
 save_predictions = true
 prediction_dir = "outputs/predictions"
+show_compare = true
+disable_save_when_show = true
+compare_interactive = true
+compare_max = -1
+compare_per_batch = -1
+compare_num_z = 1
+compare_action_mode = "bank"
+compare_random_actions = 3
+compare_seed = 42

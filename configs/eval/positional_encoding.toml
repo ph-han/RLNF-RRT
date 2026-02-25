@@ -6,8 +6,8 @@ clearance = 2
 step_size = 1
 
 [eval]
-checkpoint = "outputs/checkpoints/resnet18_and_many_block/best.pt"
-backbone = "resnet18"
+checkpoint = "outputs/checkpoints/positional_encoding/best.pt"
+backbone = "resnet34"
 batch_size = 64
 num_workers = 4
 pin_memory = true
