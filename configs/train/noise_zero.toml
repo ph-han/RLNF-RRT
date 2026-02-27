@@ -24,6 +24,9 @@ weight_decay = 0.00001
 grad_clip_norm = 1.0
 log_interval = 5
 pin_memory = true
+collision_lambda = 0.0
+collision_margin = 0.0
+collision_samples = 1
 
 [output]
 checkpoint_root = "outputs/checkpoints"
