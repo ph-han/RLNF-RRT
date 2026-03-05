@@ -22,7 +22,7 @@ def _nll_loss(z: torch.Tensor, log_det: torch.Tensor) -> torch.Tensor:
     return -log_px.mean()
 
 
-def _build_model_from_ckpt(ckpt: dict, device: torch.device, backbone: str = "resnet34") -> Flow:
+def _build_model_from_ckpt(ckpt: dict, device: torch.device, backbone: str = "resnet34", is_pe: bool = False) -> Flow:
     cfg = ckpt.get("config")
     if cfg is None or "model" not in cfg:
         raise RuntimeError("Checkpoint missing model config. Re-train with current train.py.")
@@ -34,6 +34,7 @@ def _build_model_from_ckpt(ckpt: dict, device: torch.device, backbone: str = "re
         hidden_dim=int(m["hidden_dim"]),
         s_max=float(m["s_max"]),
         backbone=backbone,
+        is_pe=is_pe
     ).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
@@ -53,7 +54,7 @@ def evaluate(config_path: str | Path = "configs/eval/default.toml") -> None:
     pin_memory = bool(eval_cfg.get("pin_memory", True)) and device.type == "cuda"
 
     ckpt = torch.load(ckpt_path, map_location=device)
-    model = _build_model_from_ckpt(ckpt, device, backbone=eval_cfg.get("backbone", "resnet34"))
+    model = _build_model_from_ckpt(ckpt, device, backbone=eval_cfg.get("backbone", "resnet34"), is_pe=eval_cfg.get("is_pe", False))
 
     split = str(data_cfg.get("split", "test"))
     ds = RLNFDataset(

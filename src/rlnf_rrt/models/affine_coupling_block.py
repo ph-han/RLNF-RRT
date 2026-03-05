@@ -2,11 +2,12 @@ import torch
 import torch.nn as nn
 
 class STNet(nn.Module):
-    def __init__(self, z_keep_dim: int, cond_dim: int, hidden_dim: int = 128, s_max: float = 1.5):
+    def __init__(self, z_keep_dim: int, cond_dim: int, hidden_dim: int = 128, s_max: float = 1.5, is_pe: bool = False):
         super().__init__()
         self.s_max = s_max
+        self.is_pe = is_pe
         self.pe_dim = 3  # [tau, sin(2pi*tau), cos(2pi*tau)]
-        in_dim = z_keep_dim + cond_dim + self.pe_dim
+        in_dim = z_keep_dim + cond_dim + (self.pe_dim  if is_pe else 0)
         out_dim = z_keep_dim
 
         self.net = nn.Sequential(
@@ -33,27 +34,31 @@ class STNet(nn.Module):
         cond_bt = cond_vec[:, None, :].expand(B, T, -1)
 
         # time positional encoding (not GT-dependent, so not cheating)
-        tau = torch.linspace(0.0, 1.0, steps=T, device=z_keep.device, dtype=z_keep.dtype).view(1, T, 1).expand(B, T, 1)
-        pe = torch.cat(
-            [
-                tau,
-                torch.sin(2.0 * torch.pi * tau),
-                torch.cos(2.0 * torch.pi * tau),
-            ],
-            dim=-1,
-        )
+        if self.is_pe:
+            tau = torch.linspace(0.0, 1.0, steps=T, device=z_keep.device, dtype=z_keep.dtype).view(1, T, 1).expand(B, T, 1)
+            pe = torch.cat(
+                [
+                    tau,
+                    torch.sin(2.0 * torch.pi * tau),
+                    torch.cos(2.0 * torch.pi * tau),
+                ],
+                dim=-1,
+            )
 
-        combined_cond = torch.cat([z_keep, cond_bt, pe], dim=-1)
+            combined_cond = torch.cat([z_keep, cond_bt, pe], dim=-1)
+        else:
+            combined_cond = torch.cat([z_keep, cond_bt], dim=-1)
+
         return self.net(combined_cond)
 
     
 class AffineCouplingBlock(nn.Module):
-    def __init__(self, cond_dim: int, hidden_dim: int = 128, s_max: float = 1.5):
+    def __init__(self, cond_dim: int, hidden_dim: int = 128, s_max: float = 1.5, is_pe: bool = False):
         super().__init__()
-        self.s_a = STNet(z_keep_dim=1, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max)
-        self.s_b = STNet(z_keep_dim=1, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max)
-        self.t_a = STNet(z_keep_dim=1, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max)
-        self.t_b = STNet(z_keep_dim=1, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max)
+        self.s_a = STNet(z_keep_dim=1, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max, is_pe=is_pe)
+        self.s_b = STNet(z_keep_dim=1, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max, is_pe=is_pe)
+        self.t_a = STNet(z_keep_dim=1, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max, is_pe=is_pe)
+        self.t_b = STNet(z_keep_dim=1, cond_dim=cond_dim, hidden_dim=hidden_dim, s_max=s_max, is_pe=is_pe)
 
     def forward(self, x: torch.Tensor, global_feat: torch.Tensor):
 

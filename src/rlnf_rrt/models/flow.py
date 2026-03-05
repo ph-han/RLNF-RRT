@@ -14,7 +14,8 @@ class Flow(nn.Module):
         sg_dim: int = 2,
         hidden_dim: int = 128,
         s_max: float = 1.5,
-        backbone: str = "resnet34"
+        backbone: str = "resnet34",
+        is_pe: bool = False,
     ):
         super().__init__()
 
@@ -28,7 +29,8 @@ class Flow(nn.Module):
             AffineCouplingBlock(
                 cond_dim=self.cond_dim,
                 hidden_dim=hidden_dim,
-                s_max=s_max
+                s_max=s_max,
+                is_pe=is_pe
             )
             for _ in range(num_blocks)
         ])
