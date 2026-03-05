@@ -27,6 +27,24 @@ def set_seed(seed: int) -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
+def compute_planning_reward(
+    is_goal: bool, 
+    dist_to_goal: float, 
+    path_cost: float, 
+    num_nodes: int, 
+    max_iter: int, 
+    map_diagonal: float
+) -> float:
+    """RRT* 탐색 결과에 대한 스칼라 보상을 계산"""
+    if not is_goal:
+        # 실패 시: 목표와 거리가 멀수록 -1.0에 가까워짐
+        return -1.0 + 0.5 * (1.0 - (dist_to_goal / map_diagonal))
+    else:
+        # 성공 시: 기본 점수 1.0 - 경로 길이 패널티 - 노드 수 패널티
+        cost_reward = -(path_cost / map_diagonal)
+        efficiency_reward = -(num_nodes / max_iter)
+        return 1.0 + cost_reward + 0.5 * efficiency_reward
+
 
 class FlowRRTStar:
     def __init__(
@@ -480,11 +498,38 @@ def main() -> None:
         is_draw=args.draw,
     )
 
+    # 1. 보상(Reward) 계산을 위한 파라미터 준비
+    map_diagonal = np.hypot(planner.w, planner.h)
+    num_nodes = len(planner.paths)
+    
+    if planner.is_goal and best_node is not None:
+        dist_to_goal = 0.0
+        path_cost = best_node.cost
+    else:
+        # 실패 시 목표와 가장 가까웠던 노드 찾기
+        min_node = min(planner.paths, key=lambda n: np.hypot(n.x - planner.goal_x, n.y - planner.goal_y))
+        dist_to_goal = np.hypot(min_node.x - planner.goal_x, min_node.y - planner.goal_y)
+        path_cost = 0.0
+
+    # 2. 보상 함수 호출
+    reward = compute_planning_reward(
+        is_goal=planner.is_goal,
+        dist_to_goal=dist_to_goal,
+        path_cost=path_cost,
+        num_nodes=num_nodes,
+        max_iter=args.iter_num,
+        map_diagonal=map_diagonal
+    )
+
+    # 3. 터미널 결과 출력
     print(f"sample: split={split}, index={idx}")
     print(
         f"times: cpu={cpu_time:.4f}s gpu={gpu_time:.4f}s total={total_time:.4f}s "
         f"nodes={len(planner.paths)} cost={(best_node.cost if best_node is not None else float('nan')):.2f}"
     )
+    print(f"🎯 Calculated Reward: {reward:.4f}")
+
+    # 4. 화면 시각화 (Plot)
     if best_node:
         print(f"Success! Time: {total_time:.4f}s, Nodes: {len(planner.paths)}, Cost: {best_node.cost:.2f}")
         # plt.imshow(planner.plot_map, interpolation="nearest")
@@ -492,6 +537,12 @@ def main() -> None:
         plt.plot(planner.init_x, planner.init_y, "ob", label="Start")
         plt.plot(planner.goal_x, planner.goal_y, "xr", label="Goal")
         _draw_metrics(cpu_time, gpu_time, total_time, len(planner.paths), best_node.cost)
+        
+        # 성공 시 노란색 텍스트로 보상 표시 (좌측 상단 지표 박스 바로 아래)
+        plt.text(0.02, 0.78, f"Reward: {reward:.4f}", transform=plt.gca().transAxes, 
+                 color='yellow', fontsize=10, fontweight='bold', 
+                 bbox=dict(boxstyle="round,pad=0.3", facecolor='black', alpha=0.55, edgecolor='none'))
+        
         plt.legend()
         plt.title("Flow-guided RRT*")
         plt.show()
@@ -500,6 +551,12 @@ def main() -> None:
         plt.plot(planner.init_x, planner.init_y, "ob", label="Start")
         plt.plot(planner.goal_x, planner.goal_y, "xr", label="Goal")
         _draw_metrics(cpu_time, gpu_time, total_time, len(planner.paths), None)
+        
+        # 실패 시 빨간색 텍스트로 보상 표시
+        plt.text(0.02, 0.78, f"Reward: {reward:.4f}", transform=plt.gca().transAxes, 
+                 color='#ff6b6b', fontsize=10, fontweight='bold', 
+                 bbox=dict(boxstyle="round,pad=0.3", facecolor='black', alpha=0.55, edgecolor='none'))
+        
         plt.legend()
         plt.title("Flow-guided RRT* (failed)")
         plt.show()
