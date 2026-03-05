@@ -6,11 +6,12 @@ clearance = 2
 step_size = 1
 
 [eval]
-checkpoint = "outputs/checkpoints/collision_loss/best.pt"
+checkpoint = "outputs/checkpoints/positional_encoding_12_coupling_blocks/best.pt"
 backbone = "resnet34"
 batch_size = 64
 num_workers = 4
 pin_memory = true
-num_samples_per_condition = 1
+num_samples_per_condition = 4
 save_predictions = true
 prediction_dir = "outputs/predictions"
+is_pe = true

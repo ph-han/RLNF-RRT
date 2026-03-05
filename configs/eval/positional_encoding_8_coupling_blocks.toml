@@ -14,3 +14,4 @@ pin_memory = true
 num_samples_per_condition = 4
 save_predictions = true
 prediction_dir = "outputs/predictions"
+is_pe = true

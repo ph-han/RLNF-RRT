@@ -1,17 +1,17 @@
 [data]
 data_root = "data"
-split = "test"
-num_points = 256
+split = "train"
+num_points = 128
 clearance = 2
 step_size = 1
 
 [eval]
-checkpoint = "outputs/checkpoints/many_num_points/best.pt"
+checkpoint = "outputs/checkpoints/positional_encoding/last.pt"
 backbone = "resnet34"
 batch_size = 64
 num_workers = 4
 pin_memory = true
-num_samples_per_condition = 2
+num_samples_per_condition = 4
 save_predictions = true
 prediction_dir = "outputs/predictions"
 is_pe = true

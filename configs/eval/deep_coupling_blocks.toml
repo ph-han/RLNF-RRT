@@ -1,12 +1,12 @@
 [data]
 data_root = "data"
 split = "test"
-num_points = 512
+num_points = 128
 clearance = 2
 step_size = 1
 
 [eval]
-checkpoint = "outputs/checkpoints/deep_coupling_blocks/best.pt"
+checkpoint = "outputs/checkpoints/flow_20260303_180255/best.pt"
 backbone = "resnet34"
 batch_size = 64
 num_workers = 4
@@ -14,3 +14,4 @@ pin_memory = true
 num_samples_per_condition = 1
 save_predictions = true
 prediction_dir = "outputs/predictions"
+is_pe = true
