@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torchvision.models import resnet18, resnet34
+from torchvision.models import resnet18, resnet34, resnet50
 
 
 class MapEncoder(nn.Module):
@@ -8,8 +8,13 @@ class MapEncoder(nn.Module):
         super().__init__()
         if backbone == "resnet18":
             base = resnet18(weights=None)
+            feat_dim = 512
         elif backbone == "resnet34":
             base = resnet34(weights=None)
+            feat_dim = 512
+        elif backbone == "resnet50":
+            base = resnet50(weights=None)
+            feat_dim = 2048
         else:
             raise ValueError(f"Unknown backbone: {backbone}")
         
@@ -26,7 +31,7 @@ class MapEncoder(nn.Module):
         
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.proj = nn.Sequential(
-            nn.Linear(512, latent_dim),
+            nn.Linear(feat_dim, latent_dim),
             nn.SiLU(),
             nn.Linear(latent_dim, latent_dim)
         )
