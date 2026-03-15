@@ -155,6 +155,10 @@ class FlowRRTStar:
             start = self.start.unsqueeze(0).to(device)
             goal = self.goal.unsqueeze(0).to(device)
             t = int(self.gt_path.shape[0])
+            with torch.no_grad():
+                for _ in range(self.num_guidance_samples):
+                        z = torch.randn((1, t, 2), device=device, dtype=cond.dtype)
+                        pred_path, _ = model.inverse(cond, start, goal, z)
 
             heat = np.zeros((h, w), dtype=np.float32)
             with torch.no_grad():
@@ -212,8 +216,9 @@ class FlowRRTStar:
         return Node(x, y)
 
     def get_nearest_node(self, rand):
-        distances = [np.hypot(node.x - rand.x, node.y - rand.y) for node in self.paths]
-        return self.paths[int(np.argmin(distances))]
+        pts = self._pts_cache[:self._n_pts]
+        dists = np.hypot(pts[:, 0] - rand.x, pts[:, 1] - rand.y)
+        return self.paths[int(np.argmin(dists))]
 
     def steer(self, near, rand):
         dist = np.hypot(rand.x - near.x, rand.y - near.y)
@@ -238,16 +243,13 @@ class FlowRRTStar:
         return False
 
     def get_near_ids(self, new):
-        n = len(self.paths)
+        n = self._n_pts
         if n <= 1:
             return [0]
         r = min(self.gamma_rrt * np.sqrt(np.log(n) / n), self.near_distance)
-
-        node_idxs = []
-        for i, node in enumerate(self.paths):
-            if np.hypot(node.x - new.x, node.y - new.y) <= r:
-                node_idxs.append(i)
-        return node_idxs
+        pts = self._pts_cache[:n]
+        dists = np.hypot(pts[:, 0] - new.x, pts[:, 1] - new.y)
+        return list(np.where(dists <= r)[0])
 
     def choose_parent(self, near_by_vertices, nearest, new):
         candi_parent, cost_min = nearest, new.cost
@@ -293,10 +295,15 @@ class FlowRRTStar:
         self.prepare_non_uniform(threshold=self.threshold)
         init_node = Node(self.init_x, self.init_y)
         self.paths = [init_node]
+        # 좌표 캐시: 매 iter마다 Python 루프 재구성 방지
+        self._pts_cache = np.empty((self.iter_num + 2, 2), dtype=np.float32)
+        self._pts_cache[0] = [self.init_x, self.init_y]
+        self._n_pts = 1
         best_node = None
+        cpu_time = 0.0
 
-        start = time.perf_counter()
         for _ in range(self.iter_num):
+            start = time.perf_counter()
             rand = self.get_random_node()
             nearest = self.get_nearest_node(rand)
             new, _ = self.steer(nearest, rand)
@@ -309,13 +316,16 @@ class FlowRRTStar:
                 new.cost = cost
                 parent.children.append(new)
                 self.paths.append(new)
+                self._pts_cache[self._n_pts] = [new.x, new.y]
+                self._n_pts += 1
 
                 if is_rewiring:
                     self.rewire(near_ids, parent, new)
-
+                end = time.perf_counter()
+                cpu_time += end - start
                 if is_draw:
                     self.plot_explore_edge(new)
-
+                start = time.perf_counter()
                 dist_to_goal = np.hypot(new.x - self.goal_x, new.y - self.goal_y)
                 if dist_to_goal <= self.expand_size:
                     final_node = Node(self.goal_x, self.goal_y, parent=new, cost=new.cost + dist_to_goal)
@@ -325,9 +335,11 @@ class FlowRRTStar:
                             self.is_goal = True
                             if is_break:
                                 break
+            end = time.perf_counter()
+            cpu_time += end - start
 
-        end = time.perf_counter()
-        cpu_time = end - start
+        # end = time.perf_counter()
+        # cpu_time = end - start
         total_time = cpu_time + gpu_time
         return best_node, cpu_time, gpu_time, total_time
 
@@ -409,7 +421,7 @@ def main() -> None:
     parser.add_argument("--eval-config", type=str, default="configs/eval/default.toml")
     parser.add_argument("--split", type=str, default=None)
     parser.add_argument("--index", type=int, default=0)
-    parser.add_argument("--iter-num", type=int, default=5000)
+    parser.add_argument("--iter-num", type=int, default=3000)
     parser.add_argument("--expand-size", type=float, default=2.0)
     parser.add_argument("--near-distance", type=float, default=15.0)
     parser.add_argument("--clearance", type=int, default=2)
@@ -498,37 +510,6 @@ def main() -> None:
         is_draw=args.draw,
     )
 
-    # 1. 보상(Reward) 계산을 위한 파라미터 준비
-    map_diagonal = np.hypot(planner.w, planner.h)
-    num_nodes = len(planner.paths)
-    
-    if planner.is_goal and best_node is not None:
-        dist_to_goal = 0.0
-        path_cost = best_node.cost
-    else:
-        # 실패 시 목표와 가장 가까웠던 노드 찾기
-        min_node = min(planner.paths, key=lambda n: np.hypot(n.x - planner.goal_x, n.y - planner.goal_y))
-        dist_to_goal = np.hypot(min_node.x - planner.goal_x, min_node.y - planner.goal_y)
-        path_cost = 0.0
-
-    # 2. 보상 함수 호출
-    reward = compute_planning_reward(
-        is_goal=planner.is_goal,
-        dist_to_goal=dist_to_goal,
-        path_cost=path_cost,
-        num_nodes=num_nodes,
-        max_iter=args.iter_num,
-        map_diagonal=map_diagonal
-    )
-
-    # 3. 터미널 결과 출력
-    print(f"sample: split={split}, index={idx}")
-    print(
-        f"times: cpu={cpu_time:.4f}s gpu={gpu_time:.4f}s total={total_time:.4f}s "
-        f"nodes={len(planner.paths)} cost={(best_node.cost if best_node is not None else float('nan')):.2f}"
-    )
-    print(f"🎯 Calculated Reward: {reward:.4f}")
-
     # 4. 화면 시각화 (Plot)
     if best_node:
         print(f"Success! Time: {total_time:.4f}s, Nodes: {len(planner.paths)}, Cost: {best_node.cost:.2f}")
@@ -538,13 +519,10 @@ def main() -> None:
         plt.plot(planner.goal_x, planner.goal_y, "xr", label="Goal")
         _draw_metrics(cpu_time, gpu_time, total_time, len(planner.paths), best_node.cost)
         
-        # 성공 시 노란색 텍스트로 보상 표시 (좌측 상단 지표 박스 바로 아래)
-        plt.text(0.02, 0.78, f"Reward: {reward:.4f}", transform=plt.gca().transAxes, 
-                 color='yellow', fontsize=10, fontweight='bold', 
-                 bbox=dict(boxstyle="round,pad=0.3", facecolor='black', alpha=0.55, edgecolor='none'))
         
         plt.legend()
-        plt.title("Flow-guided RRT*")
+        plt.axis('off')
+        plt.savefig("nf-rrt.png")
         plt.show()
     else:
         plt.imshow(planner.plot_map, interpolation="nearest")
@@ -552,13 +530,8 @@ def main() -> None:
         plt.plot(planner.goal_x, planner.goal_y, "xr", label="Goal")
         _draw_metrics(cpu_time, gpu_time, total_time, len(planner.paths), None)
         
-        # 실패 시 빨간색 텍스트로 보상 표시
-        plt.text(0.02, 0.78, f"Reward: {reward:.4f}", transform=plt.gca().transAxes, 
-                 color='#ff6b6b', fontsize=10, fontweight='bold', 
-                 bbox=dict(boxstyle="round,pad=0.3", facecolor='black', alpha=0.55, edgecolor='none'))
-        
         plt.legend()
-        plt.title("Flow-guided RRT* (failed)")
+        plt.title("RRT* (failed)")
         plt.show()
         print("Failed to find path.")
 
