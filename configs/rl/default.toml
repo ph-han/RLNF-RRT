@@ -10,7 +10,7 @@ step_size = 1
 
 [flow]
 # reward 계산에 사용할 사전학습 flow 모델 checkpoint
-checkpoint = "outputs/checkpoints/flow_20260219_151651/last.pt"
+checkpoint = "outputs/checkpoints/resnet34_and_many_blocks/best.pt"
 backbone = "resnet34"
 is_pe = false
 
