@@ -1,0 +1,46 @@
+[seed]
+value = 42
+
+[data]
+data_root = "data"
+split = "train"
+num_points = 128
+clearance = 2
+step_size = 1
+
+[flow]
+# reward 계산에 사용할 사전학습 flow 모델 checkpoint
+checkpoint = "outputs/checkpoints/flow_20260219_151651/last.pt"
+backbone = "resnet34"
+is_pe = false
+
+[policy]
+# sub-goal policy encoder (flow 모델과 가중치 미공유)
+backbone = "resnet18"
+latent_dim = 64
+hidden_dim = 128
+
+[rl]
+total_steps = 1000
+steps_per_update = 16   # 1 gradient update당 에피소드 수
+lr = 3e-4
+entropy_coef = 0.01
+grad_clip_norm = 1.0
+log_interval = 10
+
+# reward 계산 파라미터
+num_flow_samples = 8    # segment당 flow 샘플 수 (클수록 정확, 느림)
+pts_per_seg = 32        # segment 경로 점 수
+img_size = 224
+sg_obstacle_penalty = 2.0
+
+# reward 가중치
+# total_reward = w_path * path_reward + w_sdf * sdf_reward + w_gt * gt_score
+reward_w_path = 1.0     # flow segment 충돌없는 경로 비율
+reward_w_sdf  = 0.3     # sub_goal 위치의 SDF clearance (cond_image[2] 채널)
+reward_w_gt   = 0.5     # GT(A*) 경로 proximity score
+gt_score_sigma = 8.0    # GT score map Gaussian blur sigma (pixels)
+
+[output]
+checkpoint_root = "outputs/checkpoints"
+run_name = ""           # 비워두면 "rl_YYYYMMDD_HHMMSS" 자동 생성
