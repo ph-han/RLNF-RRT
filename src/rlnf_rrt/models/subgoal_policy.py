@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from rlnf_rrt.models.cond_encoder import MapEncoder
 
@@ -10,24 +11,28 @@ class SubGoalPolicy(nn.Module):
     """
     Sub-goal policy for REINFORCE training.
 
-    (cond_image, start, goal) → (loc, log_scale)  for TanhNormal distribution
-    sub_goal ~ TanhNormal(loc, exp(log_scale)) ∈ [0, 1]²
+    (cond_image, start, goal) → (alpha, beta)  for Beta distribution
+    sub_goal ~ Beta(alpha, beta) ∈ [0, 1]²
 
-    MapEncoder를 재사용하여 맵 특징 추출 후 MLP로 분포 파라미터를 예측.
+    mean은 start-goal midpoint로 초기화되어 있어, 학습 전에도 합리적인 예측.
     """
 
     def __init__(
         self,
-        latent_dim: int = 64,
+        latent_dim: int = 128,
         hidden_dim: int = 128,
         backbone: str = "resnet34",
         num_subgoals: int = 1,
+        pretrained_encoder: nn.Module | None = None,
     ):
         super().__init__()
         self.num_subgoals = num_subgoals
         out_dim = num_subgoals * 2
 
-        self.map_encoder = MapEncoder(latent_dim=latent_dim, backbone=backbone)
+        if pretrained_encoder is not None:
+            self.map_encoder = pretrained_encoder
+        else:
+            self.map_encoder = MapEncoder(latent_dim=latent_dim, backbone=backbone)
         feat_dim = latent_dim + 4  # map_feat + start(2) + goal(2)
 
         self.mlp = nn.Sequential(
@@ -36,8 +41,14 @@ class SubGoalPolicy(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
         )
-        self.loc_head = nn.Linear(hidden_dim, out_dim)
-        self.log_scale_head = nn.Linear(hidden_dim, out_dim)
+        self.mu_head   = nn.Linear(hidden_dim, out_dim)
+        self.conc_head = nn.Linear(hidden_dim, out_dim)
+
+        # zeros init: 기본 출력 0 → mean=midpoint, conc=softplus(0)+2≈2.69
+        nn.init.zeros_(self.mu_head.weight)
+        nn.init.zeros_(self.mu_head.bias)
+        nn.init.zeros_(self.conc_head.weight)
+        nn.init.zeros_(self.conc_head.bias)
 
     def forward(
         self,
@@ -45,22 +56,24 @@ class SubGoalPolicy(nn.Module):
         start: torch.Tensor,       # (2,) or (B, 2)
         goal: torch.Tensor,        # (2,) or (B, 2)
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # torchrl batch_size=[] 환경에서 오는 unbatched 입력 처리
         unbatched = cond_image.dim() == 3
         if unbatched:
             cond_image = cond_image.unsqueeze(0)
             start = start.unsqueeze(0)
             goal = goal.unsqueeze(0)
 
-        feat = self.map_encoder(cond_image)                       # (B, latent_dim)
-        feat = torch.cat([feat, start, goal], dim=-1)             # (B, latent_dim+4)
-
+        feat = self.map_encoder(cond_image)             # (B, latent_dim)
+        feat = torch.cat([feat, start, goal], dim=-1)   # (B, latent_dim+4)
         h = self.mlp(feat)
-        loc = self.loc_head(h)                                    # (B, num_sg*2)
-        log_scale = self.log_scale_head(h).clamp(-4.0, 2.0)      # (B, num_sg*2)
+
+        mean = torch.sigmoid(self.mu_head(h))
+        conc = F.softplus(self.conc_head(h)) + 2
+
+        alpha = mean * conc
+        beta  = (1 - mean) * conc
 
         if unbatched:
-            loc = loc.squeeze(0)
-            log_scale = log_scale.squeeze(0)
+            alpha = alpha.squeeze(0)
+            beta  = beta.squeeze(0)
 
-        return loc, log_scale.exp()
+        return alpha, beta
