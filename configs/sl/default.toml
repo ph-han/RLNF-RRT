@@ -1,0 +1,28 @@
+[seed]
+value = 42
+
+[data]
+data_root = "data"
+num_points = 128
+clearance = 2
+step_size = 1
+batch_size = 64
+num_workers = 4
+
+[policy]
+backbone = "resnet34"
+latent_dim = 64
+hidden_dim = 128
+num_subgoals = 1
+
+[train]
+epochs = 50
+lr = 1e-4
+grad_clip_norm = 1.0
+val_interval = 5    # validate every N epochs
+log_interval = 100  # log every N steps
+lambda_obs = 0.5    # obstacle penalty weight (0.0 = disabled)
+
+[output]
+checkpoint_root = "outputs/checkpoints"
+run_name = "sl_midpoint"

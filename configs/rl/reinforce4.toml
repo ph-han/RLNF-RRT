@@ -21,24 +21,24 @@ latent_dim = 128
 hidden_dim = 128
 
 [rl]
-total_steps = 40000
-steps_per_update = 128   # rollout 버퍼 크기 (1 update당 에피소드 수)
+total_steps = 30000
+steps_per_update = 64   # rollout 버퍼 크기 (1 update당 에피소드 수)
 lr = 1e-4
-entropy_coef = 0.15
+entropy_coef = 0.3
 baseline_ema = 0.05
 grad_clip_norm = 0.0
 log_interval = 1
 
 # reward 계산 파라미터
-num_flow_samples = 8    # segment당 flow 샘플 수 (클수록 정확, 느림)
+num_flow_samples = 4    # segment당 flow 샘플 수 (클수록 정확, 느림)
 pts_per_seg = 32        # segment 경로 점 수
 img_size = 224
 # reward 가중치
 # total_reward = w_path * path_reward + w_gt * gt_score
 reward_w_path = 1.0     # flow 샘플 경로의 gt_score_map 평균 점수
-reward_w_gt   = 1.5     # GT(A*) 경로 proximity score (subgoal 자체 위치)
-gt_score_decay_rate = 1.0  # 픽셀당 score 감소량 (3.0 - dist * decay_rate) 
+reward_w_gt   = 2.0     # GT(A*) 경로 proximity score (subgoal 자체 위치)
+gt_score_decay_rate = 0.5  # 픽셀당 score 감소량 (5.0 - dist * decay_rate) 
 
 [output]
 checkpoint_root = "outputs/checkpoints"
-run_name = "reinforce_v3"   # 비워두면 "rl_YYYYMMDD_HHMMSS" 자동 생성
+run_name = "reinforce_v4"   # 비워두면 "rl_YYYYMMDD_HHMMSS" 자동 생성

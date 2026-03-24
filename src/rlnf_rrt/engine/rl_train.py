@@ -76,8 +76,9 @@ def _make_gt_score_map(
     score_map = 5.0 - (dist_to_path * decay_rate)
 
     if obstacle_mask is not None:
-        score_map[obstacle_mask > 0] = -10.0
+        score_map[obstacle_mask > 0] = -20.0
 
+    score_map = np.maximum(score_map, -20.0)
     return score_map.astype(np.float32)
 
 
@@ -158,6 +159,7 @@ def _compute_reward(
     seg2 = _seg_gt_score(flow_model, cond_image, sub_goal, goal, gt_score_map, num_samples, pts_per_seg, device)
     path_reward = (seg1 + seg2) / 2.0
     
+    # print(f"path : {path_reward}, gt: {on_the_gt}")
     return w_path * path_reward + w_gt * on_the_gt
 
 
