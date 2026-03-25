@@ -168,7 +168,7 @@ def main() -> None:
 
         # 2. count head → argmax for deterministic k
         feat0 = torch.cat([map_feat, st_s.unsqueeze(0), goal_s.unsqueeze(0)], dim=-1)
-        h0 = rl_policy.mlp(feat0)
+        h0 = rl_policy.count_mlp(feat0)
         count_logits = rl_policy.count_head(h0).squeeze(0)   # (max_K+1,)
         k = int(count_logits.argmax().item())
 

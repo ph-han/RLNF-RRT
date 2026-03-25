@@ -1,0 +1,39 @@
+[seed]
+value = 42
+
+[data]
+data_root = "data"
+split = "train"
+num_points = 128
+clearance = 2
+step_size = 1
+
+[flow]
+checkpoint = "outputs/checkpoints/resnet34_and_many_blocks/best.pt"
+backbone = "resnet34"
+is_pe = false
+
+[policy]
+backbone = "resnet34"
+# sl_midpoint 체크포인트에서 latent_dim/hidden_dim을 자동으로 읽어옴
+pretrain_checkpoint = "outputs/checkpoints/sl_midpoint_v1/best.pt"
+
+[rl]
+total_steps = 30000
+steps_per_update = 64
+lr = 5e-6               # fine-tune이므로 낮게
+entropy_coef = 0.05      # SL 초기화를 유지하도록 낮게
+baseline_ema = 0.05
+grad_clip_norm = 0.5
+log_interval = 1
+
+num_flow_samples = 4
+pts_per_seg = 32
+img_size = 224
+reward_w_path = 1.0
+reward_w_gt   = 1.5
+gt_score_decay_rate = 0.5
+
+[output]
+checkpoint_root = "outputs/checkpoints"
+run_name = "reinforce_sl_finetune"

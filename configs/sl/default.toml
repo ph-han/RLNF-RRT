@@ -7,22 +7,20 @@ num_points = 128
 clearance = 2
 step_size = 1
 batch_size = 64
-num_workers = 4
+num_workers = 6
 
 [policy]
 backbone = "resnet34"
-latent_dim = 64
+latent_dim = 128
 hidden_dim = 128
-num_subgoals = 1
 
 [train]
-epochs = 50
+epochs = 300
 lr = 1e-4
 grad_clip_norm = 1.0
-val_interval = 5    # validate every N epochs
-log_interval = 100  # log every N steps
-lambda_obs = 0.5    # obstacle penalty weight (0.0 = disabled)
+val_interval = 1
+log_interval = 10
 
 [output]
 checkpoint_root = "outputs/checkpoints"
-run_name = "sl_midpoint"
+run_name = "sl_midpoint_v1"

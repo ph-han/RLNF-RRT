@@ -462,7 +462,7 @@ def rl_train(config_path: str | Path = "configs/rl/reinforce_ar.toml") -> None:
         count_logits, alpha, beta_p = policy.forward_ar_teacher(
             b_cond, b_start, b_goal,
             b_action.detach(),   # (B, max_subgoals, 2) — rollout 버퍼
-            b_k,
+            # b_k,
         )
         # count_logits: (B, max_subgoals+1)
         # alpha, beta_p: (B, max_subgoals, 2)

@@ -281,14 +281,28 @@ def _build_actor(
     device: torch.device,
     pretrained_encoder: nn.Module,
 ) -> SubGoalPolicy:
-    model = SubGoalPolicy(
-        latent_dim=int(policy_cfg.get("latent_dim", 64)),
-        hidden_dim=int(policy_cfg.get("hidden_dim", 128)),
-        backbone=str(policy_cfg.get("backbone", "resnet34")),
-        num_subgoals=1,
-        pretrained_encoder=pretrained_encoder,
-    )
-    print("[actor] using pretrained flow encoder (frozen)")
+    pretrain_ckpt_path = policy_cfg.get("pretrain_checkpoint")
+    if pretrain_ckpt_path:
+        ckpt_path = resolve_project_path(pretrain_ckpt_path)
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+        sl_policy_cfg = ckpt["config"].get("policy", {})
+        model = SubGoalPolicy(
+            latent_dim=int(sl_policy_cfg.get("latent_dim", policy_cfg.get("latent_dim", 64))),
+            hidden_dim=int(sl_policy_cfg.get("hidden_dim", policy_cfg.get("hidden_dim", 128))),
+            backbone=str(sl_policy_cfg.get("backbone", policy_cfg.get("backbone", "resnet34"))),
+            num_subgoals=1,
+        )
+        model.load_state_dict(ckpt["model_state_dict"])
+        print(f"[actor] loaded SL pretrained checkpoint from {ckpt_path}")
+    else:
+        model = SubGoalPolicy(
+            latent_dim=int(policy_cfg.get("latent_dim", 64)),
+            hidden_dim=int(policy_cfg.get("hidden_dim", 128)),
+            backbone=str(policy_cfg.get("backbone", "resnet34")),
+            num_subgoals=1,
+            pretrained_encoder=pretrained_encoder,
+        )
+        print("[actor] using pretrained flow encoder (frozen)")
     return model.to(device)
 
 
@@ -440,12 +454,9 @@ def rl_train(config_path: str | Path = "configs/rl/default.toml") -> None:
 
         # ── REINFORCE 업데이트 ────────────────────────────────────────
         policy.train()
-        raw_alpha, raw_beta = policy(b_cond, b_start, b_goal)
+        alpha, beta_param = policy(b_cond, b_start, b_goal)
 
-        alpha = F.softplus(raw_alpha) + 0.001
-        beta_param = F.softplus(raw_beta) + 0.001
-
-        dist = Beta(alpha, beta_param)
+        dist = Beta(alpha.clamp(min=0.1), beta_param.clamp(min=0.1))
         log_prob = dist.log_prob(b_action.clamp(0.001, 0.999)).sum(-1)  # (B,)
         entropy  = dist.entropy().sum(-1).mean()                         # scalar
 

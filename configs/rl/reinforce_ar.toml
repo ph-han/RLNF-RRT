@@ -26,7 +26,7 @@ lr = 1e-4
 # entropy 두 개 분리:
 #   count_entropy_coef: K 다양성 유지 (높을수록 K가 골고루 샘플링됨)
 #   sg_entropy_coef: 위치 분포 탐색 유지
-count_entropy_coef = 0.05
+count_entropy_coef = 0.1
 sg_entropy_coef = 0.1
 k_warmup_steps = 2000   # 처음 N step은 K=max_subgoals 고정, 이후 자유 샘플링
 baseline_ema = 0.05
@@ -41,7 +41,7 @@ img_size = 224
 reward_w_path = 1.0
 reward_w_gt = 1.5
 reward_w_efficiency = 0.0   # efficiency bonus (0이면 비활성)
-gt_score_decay_rate = 1.0
+gt_score_decay_rate = 0.3
 
 [output]
 checkpoint_root = "outputs/checkpoints"
