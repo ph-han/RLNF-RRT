@@ -17,34 +17,25 @@ from rlnf_rrt.data.dataset import RLNFDataset
 from rlnf_rrt.models.flow import Flow
 from rlnf_rrt.utils.config import load_toml, resolve_project_path
 from rlnf_rrt.utils.node import Node
+from rlnf_rrt.utils.seed import seed_everything
 from rlnf_rrt.utils.utils import get_device
 
 
-def set_seed(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
 def compute_planning_reward(
-    is_goal: bool, 
-    dist_to_goal: float, 
-    path_cost: float, 
-    num_nodes: int, 
-    max_iter: int, 
-    map_diagonal: float
+    is_goal: bool,
+    dist_to_goal: float,
+    path_cost: float,
+    num_nodes: int,
+    max_iter: int,
+    map_diagonal: float,
+    seg_length: float = 0.0,
 ) -> float:
-    """RRT* 탐색 결과에 대한 스칼라 보상을 계산"""
-    if not is_goal:
-        # 실패 시: 목표와 거리가 멀수록 -1.0에 가까워짐
-        return -1.0 + 0.5 * (1.0 - (dist_to_goal / map_diagonal))
+    if is_goal:
+        path_quality = min(seg_length / max(path_cost, seg_length, 1.0), 1.0)
+        node_efficiency = 1.0 - (num_nodes / max(max_iter, 1))
+        return 0.5 + 0.3 * path_quality + 0.2 * max(node_efficiency, 0.0)
     else:
-        # 성공 시: 기본 점수 1.0 - 경로 길이 패널티 - 노드 수 패널티
-        cost_reward = -(path_cost / map_diagonal)
-        efficiency_reward = -(num_nodes / max_iter)
-        return 1.0 + cost_reward + 0.5 * efficiency_reward
-
+        return -0.5 - 0.2 * min(dist_to_goal / max(map_diagonal, 1.0), 1.0)
 
 class FlowRRTStar:
     def __init__(
@@ -208,7 +199,7 @@ class FlowRRTStar:
         p = random.random()
         if p < self.goal_bias:
             x, y = self.goal_x, self.goal_y
-        elif self.is_neural_mode and random.random() < self.flow_guidance_prob:
+        elif self.is_neural_mode:
             y, x = self.sample_from_non_uniform_map()
         else:
             x = random.uniform(1, self.w - 1)
@@ -329,7 +320,9 @@ class FlowRRTStar:
                 dist_to_goal = np.hypot(new.x - self.goal_x, new.y - self.goal_y)
                 if dist_to_goal <= self.expand_size:
                     final_node = Node(self.goal_x, self.goal_y, parent=new, cost=new.cost + dist_to_goal)
-                    if not self.is_collision(final_node):
+                    gx, gy = int(round(self.goal_x)), int(round(self.goal_y))
+                    goal_on_obstacle = bool(self.grid_map[gy, gx]) if (0 <= gx < self.w and 0 <= gy < self.h) else True
+                    if not goal_on_obstacle:
                         if best_node is None or final_node.cost < best_node.cost:
                             best_node = final_node
                             self.is_goal = True
@@ -447,7 +440,7 @@ def main() -> None:
     if not (0.0 <= args.flow_guidance_prob <= 1.0):
         raise ValueError(f"--flow-guidance-prob must be in [0, 1], got {args.flow_guidance_prob}")
 
-    set_seed(args.seed)
+    seed_everything(args.seed)
     device = get_device()
     print(f"device: {device}")
 

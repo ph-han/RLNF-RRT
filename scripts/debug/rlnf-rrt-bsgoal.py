@@ -175,7 +175,7 @@ def _gen_seg_paths(waypoints, cond_image, model, device, num_points, num_samples
 
 
 def _draw_panel(ax, map_np, gt_path, H, W, start_np, goal_np, title,
-                full_paths=None, seg_paths=None, seg_colors=None, subgoals=None, num_samples=6):
+                full_paths=None, seg_paths=None, seg_colors=None, subgoals=None, num_samples=4):
     ax.imshow(map_np, cmap="gray", origin="upper", vmin=0, vmax=1)
     ax.set_title(title, fontsize=11)
     ax.set_xticks([])
@@ -229,8 +229,8 @@ def _visualize_one(idx: int, sample, model, rl_policy, device, args, save_path: 
     goal_np = sample["goal"].cpu().numpy()
     obstacle_mask = (sample["cond_image"][0].cpu().numpy() <= 0.5)
 
-    num_points = gt_path.shape[0]
-    num_samples = 6
+    num_points = 128
+    num_samples = 4
     base_colors = ["#e74c3c", "#f39c12", "#2ecc71", "#3498db", "#9b59b6", "#1abc9c", "#e67e22"]
 
     # --- Sub-goal prediction ---

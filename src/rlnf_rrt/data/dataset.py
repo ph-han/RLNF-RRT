@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import scipy.ndimage as ndi
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
 
 from rlnf_rrt.utils.utils import load_cspace_img_to_np
 
@@ -34,6 +37,104 @@ def _resample_points(path_xy: np.ndarray, target_points: int) -> np.ndarray:
     out_x = np.interp(target_dist, dist, path_xy[:, 0]).astype(np.float32)
     out_y = np.interp(target_dist, dist, path_xy[:, 1]).astype(np.float32)
     return np.stack([out_x, out_y], axis=1)
+
+
+class DifficultyBatchSampler(Sampler[list[int]]):
+    """난이도 기반 Stratified Batch Sampler.
+
+    각 배치를 easy/medium/hard 비율에 맞춰 구성.
+    학습 진행도(progress)에 따라 비율을 자동 조정 (curriculum).
+
+    Args:
+        difficulties: 샘플별 난이도 [0, 1] 배열.
+        batch_size: 배치 크기.
+        total_batches: 전체 배치 수 (epoch 개념 대신 총 iteration 기반).
+        easy_thresh: easy/medium 경계 (미만이면 easy).
+        hard_thresh: medium/hard 경계 (이상이면 hard).
+        warmup_ratio: 전체 진행도 중 warmup 비율 (medium 위주).
+        transition_ratio: warmup 이후 easy+medium → 전체 전환 비율.
+    """
+
+    def __init__(
+        self,
+        difficulties: np.ndarray,
+        batch_size: int,
+        total_batches: int,
+        easy_thresh: float = 0.3,
+        hard_thresh: float = 0.7,
+        warmup_ratio: float = 0.1,
+        transition_ratio: float = 0.3,
+    ) -> None:
+        self.difficulties = np.asarray(difficulties, dtype=np.float32)
+        self.batch_size = batch_size
+        self.total_batches = total_batches
+        self.warmup_ratio = warmup_ratio
+        self.transition_ratio = transition_ratio
+
+        # 난이도 그룹 인덱스
+        self.easy_ids = np.where(self.difficulties < easy_thresh)[0]
+        self.med_ids = np.where(
+            (self.difficulties >= easy_thresh) & (self.difficulties < hard_thresh)
+        )[0]
+        self.hard_ids = np.where(self.difficulties >= hard_thresh)[0]
+
+        # 빈 그룹 fallback
+        all_ids = np.arange(len(self.difficulties))
+        if len(self.easy_ids) == 0:
+            self.easy_ids = all_ids
+        if len(self.med_ids) == 0:
+            self.med_ids = all_ids
+        if len(self.hard_ids) == 0:
+            self.hard_ids = all_ids
+
+        self._batch_idx = 0
+
+    def _get_ratios(self, progress: float) -> tuple[float, float, float]:
+        """학습 진행도에 따른 (easy, medium, hard) 비율 반환."""
+        if progress < self.warmup_ratio:
+            # warmup: medium 위주 + easy 약간
+            return (0.2, 0.6, 0.2)
+        elif progress < self.transition_ratio:
+            # transition: easy + medium 중심, hard 점진 증가
+            t = (progress - self.warmup_ratio) / max(self.transition_ratio - self.warmup_ratio, 1e-6)
+            hard_r = 0.2 + 0.15 * t  # 0.2 → 0.35
+            easy_r = 0.3 - 0.05 * t  # 0.3 → 0.25
+            med_r = 1.0 - easy_r - hard_r
+            return (easy_r, med_r, hard_r)
+        else:
+            # main phase: hard 비중 점진 증가
+            t = (progress - self.transition_ratio) / max(1.0 - self.transition_ratio, 1e-6)
+            hard_r = 0.35 + 0.15 * t  # 0.35 → 0.50
+            easy_r = max(0.25 - 0.15 * t, 0.10)  # 0.25 → 0.10
+            med_r = 1.0 - easy_r - hard_r
+            return (easy_r, med_r, hard_r)
+
+    def __iter__(self):
+        for i in range(self.total_batches):
+            progress = i / max(self.total_batches, 1)
+            easy_r, med_r, hard_r = self._get_ratios(progress)
+
+            n_easy = max(int(round(self.batch_size * easy_r)), 1)
+            n_hard = max(int(round(self.batch_size * hard_r)), 1)
+            n_med = max(self.batch_size - n_easy - n_hard, 1)
+
+            # 총합 보정
+            total = n_easy + n_med + n_hard
+            if total > self.batch_size:
+                n_med = max(self.batch_size - n_easy - n_hard, 0)
+            elif total < self.batch_size:
+                n_med += self.batch_size - total
+
+            batch = []
+            batch.extend(np.random.choice(self.easy_ids, size=n_easy, replace=True).tolist())
+            batch.extend(np.random.choice(self.med_ids, size=n_med, replace=True).tolist())
+            batch.extend(np.random.choice(self.hard_ids, size=n_hard, replace=True).tolist())
+
+            np.random.shuffle(batch)
+            yield batch
+
+    def __len__(self) -> int:
+        return self.total_batches
 
 
 class RLNFDataset(Dataset):
@@ -90,9 +191,7 @@ class RLNFDataset(Dataset):
             noise = np.random.normal(0.0, self.noise_std, gt_path.shape).astype(np.float32)
             gt_path = np.clip(gt_path + noise, 0.0, 1.0)
 
-        import scipy.ndimage as ndi
-        
-        # Build 3-channel input: 
+        # Build 3-channel input:
         # channel 0: binary map
         # channel 1: start/goal channel (start +1, goal -1)
         # channel 2: signed distance field (sdf)

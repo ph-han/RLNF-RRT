@@ -6,7 +6,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
-from rlnf_rrt.engine.sl_train import sl_train
+from rlnf_rrt.engine.pretrain_subgoal import sl_train
 
 
 def main() -> None:

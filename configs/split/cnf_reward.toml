@@ -1,0 +1,65 @@
+[seed]
+value = 42
+
+[data]
+data_root = "data"
+split = "train"
+num_points = 128
+clearance = 2
+step_size = 1
+
+[flow]
+checkpoint = "outputs/checkpoints/resnet34_and_many_blocks/best.pt"
+backbone = "resnet34"
+is_pe = false
+
+[midpoint]
+checkpoint = "outputs/checkpoints/reinforce_sl_finetune/best.pt"
+
+[split_agent]
+latent_dim = 128
+hidden_dim = 128
+max_depth = 3
+backbone = "resnet34"
+use_complexity_feats = true
+
+[rl]
+total_episodes = 50000
+lr = 3e-4
+lr_min = 3e-5
+entropy_coef = 0.05
+entropy_coef_start = 0.15
+entropy_warmup_ratio = 0.15
+value_loss_coef = 0.5
+grad_clip_norm = 1.0
+log_interval = 1
+batch_size = 32
+
+# CNF reward 설정
+cnf_num_samples = 16          # CNF 샘플 수 (리프 reward 계산용)
+
+# 주기적 RRT* bonus 설정
+rrt_eval_interval = 500       # RRT* bonus 주기 (에피소드 단위)
+rrt_eval_samples = 100        # 주기적 평가에 사용할 medium+ 샘플 수
+num_flow_samples = 4          # RRT* guidance용 flow 샘플 수
+pts_per_seg = 128
+img_size = 224
+total_budget = 4000
+min_iter = 200
+
+force_split_eps = 0.15
+rrt_expand_size = 2.0
+rrt_near_distance = 13.0
+rrt_goal_bias = 0.1
+rrt_flow_guidance_prob = 0.9
+val_interval = 100
+val_samples = 100
+
+[curriculum]
+enabled = true
+warmup_ratio = 0.25
+transition_ratio = 0.45
+
+[output]
+checkpoint_root = "outputs/checkpoints"
+run_name = "split_agent_cnf_v2"

@@ -6,7 +6,7 @@ import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
-from rlnf_rrt.engine.evaluate import evaluate
+from rlnf_rrt.engine.eval_pretrain_nf import evaluate
 
 
 def main() -> None:
